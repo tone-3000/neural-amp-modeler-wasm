@@ -10,17 +10,12 @@ import { InfoIcon } from 'lucide-react';
 import { PREVIEW_MODE } from './types';
 import { DEFAULT_INPUTS, DEFAULT_IRS, DEFAULT_MODELS } from './constants';
 
-// Legacy-only set: tag every default as A1 so architecture='2' yields no matches.
-const A1_MODELS = DEFAULT_MODELS.filter(m => m.architecture !== '2').map(m => ({
+// Tag every default as A1 so the `architecture='2'` filter yields no matches —
+// exercises the disabled-state path without shipping A2 example NAMs.
+const A1_MODELS = DEFAULT_MODELS.map(m => ({
   ...m,
   architecture: '1' as const,
 })) as unknown as typeof DEFAULT_MODELS;
-
-// Mixed set: real A2 entries from DEFAULT_MODELS sit alongside the tagged A1 ones,
-// so architecture='2' filters down to a playable subset.
-const MIXED_MODELS = DEFAULT_MODELS.map(m =>
-  m.architecture === '2' ? { ...m, default: true } : { ...m, architecture: '1' as const }
-) as unknown as typeof DEFAULT_MODELS;
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
   <p className='text-xs uppercase tracking-wider text-zinc-500'>{children}</p>
@@ -80,14 +75,6 @@ const PreviewContent: React.FC = () => {
             architecture='2'
             models={A1_MODELS}
             infoSlot={<InfoIcon size={20} className='text-zinc-400' />}
-          />
-
-          <SectionLabel>T3kPlayer — architecture="2", mixed models filtered down</SectionLabel>
-          <T3kPlayer
-            id='player-arch-match'
-            architecture='2'
-            models={MIXED_MODELS}
-            onPlayDemo={({ model }) => console.log('arch-match play', model)}
           />
 
           <SectionLabel>T3kPlayer — disabled prop</SectionLabel>

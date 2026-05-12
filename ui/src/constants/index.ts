@@ -216,16 +216,6 @@ const models = [
     name: 'Roland JC-120',
     url: '/models/jc.nam',
   },
-  {
-    name: 'Ampeg Fliptop B18 A2',
-    url: '/models/ampeg_fliptop_a2.nam',
-    architecture: '2' as const,
-  },
-  {
-    name: 'Mesa Boogie Dual Rectifier A2',
-    url: '/models/mesa_rectifier_a2.nam',
-    architecture: '2' as const,
-  },
 ];
 
 const githubBaseUrl =

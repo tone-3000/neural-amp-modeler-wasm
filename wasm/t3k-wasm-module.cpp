@@ -17,6 +17,7 @@
 
 #include <NAM/activations.h>
 #include <NAM/dsp.h>
+#include <NAM/slimmable.h>
 
 // Threshold for level smoothing
 #define SMOOTH_EPSILON .0001f
@@ -241,13 +242,27 @@ extern "C" {
  * Sets up the DSP model from a JSON configuration
  * Initializes the audio context and worklet if this is the first model
  * @param jsonStr JSON string containing the model configuration
+ * @param forceNano When non-zero, force SlimmableContainer models into nano mode.
+ *                  Picks the smallest submodel via SetSlimmableSize(0.0) — the
+ *                  threshold semantics are half-open `[prev_max, this_max)`, so
+ *                  any value < the first submodel's max_value selects nano.
+ *                  Caller is responsible for only passing A2/Slimmable models;
+ *                  non-slimmable models silently ignore the flag.
  */
-void setDsp(const char* jsonStr)
+void setDsp(const char* jsonStr, int forceNano)
 {
   std::unique_ptr<nam::DSP> tmp = nullptr;
 
   loading = true;
   tmp = nam::get_dsp(jsonStr);
+
+  if (forceNano && tmp != nullptr)
+  {
+    if (auto* slimmable = dynamic_cast<nam::SlimmableModel*>(tmp.get()))
+    {
+      slimmable->SetSlimmableSize(0.0);
+    }
+  }
 
   if (currentModel == nullptr)
   {
@@ -257,7 +272,7 @@ void setDsp(const char* jsonStr)
 
     sampleRate = query_sample_rate_of_audiocontexts();
     updateDCBlockerCoeff(); // Update DC blocker coefficient for the current sample rate
-    
+
     EmscriptenWebAudioCreateAttributes attrs = {.latencyHint = "interactive", .sampleRate = sampleRate};
 
     EMSCRIPTEN_WEBAUDIO_T context = emscripten_create_audio_context(&attrs);

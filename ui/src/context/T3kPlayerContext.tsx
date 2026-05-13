@@ -68,8 +68,12 @@ interface T3kPlayerContextType {
   isAudioReady: () => boolean;
 
   // Actions
-  init: (options?: { audioUrl?: string; modelUrl?: string }) => Promise<void>;
-  loadModel: (modelUrl: string) => Promise<void>;
+  init: (options?: {
+    audioUrl?: string;
+    modelUrl?: string;
+    forceA2Nano?: boolean;
+  }) => Promise<void>;
+  loadModel: (modelUrl: string, forceA2Nano?: boolean) => Promise<void>;
   loadAudio: (src: string) => Promise<void>;
   loadIr: (config: IrConfig) => Promise<void>;
   removeIr: () => void;
@@ -82,6 +86,7 @@ interface T3kPlayerContextType {
     modelUrl: string;
     ir: { url: string | null; mix?: number; gain?: number };
     bypassed: boolean;
+    forceA2Nano?: boolean;
   }) => Promise<void>;
 
   // Input mode actions
@@ -229,6 +234,7 @@ export function T3kPlayerContextProvider({
     async (options?: {
       audioUrl?: string;
       modelUrl?: string;
+      forceA2Nano?: boolean;
     }): Promise<void> => {
       if (isInitializedRef.current || isInitializingRef.current) return;
 
@@ -343,7 +349,7 @@ export function T3kPlayerContextProvider({
           options?.modelUrl ||
           DEFAULT_MODELS.find(m => m.default)?.url ||
           DEFAULT_MODELS[0].url;
-        await loadModelInternal(modelUrl);
+        await loadModelInternal(modelUrl, options?.forceA2Nano);
 
         // Wait for the WASM callback to execute and create audio nodes
         await audioReady;
@@ -366,7 +372,10 @@ export function T3kPlayerContextProvider({
   );
 
   // Internal model loading function used during init (bypasses isInitializingRef check)
-  const loadModelInternal = async (modelUrl: string): Promise<void> => {
+  const loadModelInternal = async (
+    modelUrl: string,
+    forceA2Nano?: boolean
+  ): Promise<void> => {
     // Fetch and process model file
     const response = await fetch(modelUrl);
     if (!response.ok) {
@@ -413,10 +422,15 @@ export function T3kPlayerContextProvider({
             await context.suspend();
           }
 
-          // Load DSP - this triggers WASM to create AudioContext/AudioWorklet
-          await module.ccall('setDsp', null, ['number'], [ptr], {
-            async: true,
-          });
+          // Load DSP - this triggers WASM to create AudioContext/AudioWorklet.
+          // Non-slimmable models silently ignore the forceA2Nano flag.
+          await module.ccall(
+            'setDsp',
+            null,
+            ['number', 'number'],
+            [ptr, forceA2Nano ? 1 : 0],
+            { async: true }
+          );
           module._free(ptr);
 
           // Resume context (if it exists)
@@ -444,15 +458,18 @@ export function T3kPlayerContextProvider({
   // Load model (public API with guards)
   // Uses refs for guards to avoid stale closure issues when called
   // immediately after init() within the same event handler
-  const loadModel = useCallback(async (modelUrl: string): Promise<void> => {
-    if (isInitializingRef.current) {
-      throw new Error('Audio system is initializing');
-    }
-    if (!isInitializedRef.current) {
-      throw new Error('Audio system not initialized. Call init() first.');
-    }
-    await loadModelInternal(modelUrl);
-  }, []);
+  const loadModel = useCallback(
+    async (modelUrl: string, forceA2Nano?: boolean): Promise<void> => {
+      if (isInitializingRef.current) {
+        throw new Error('Audio system is initializing');
+      }
+      if (!isInitializedRef.current) {
+        throw new Error('Audio system not initialized. Call init() first.');
+      }
+      await loadModelInternal(modelUrl, forceA2Nano);
+    },
+    []
+  );
 
   // Load audio
   const loadAudio = useCallback(
@@ -694,12 +711,13 @@ export function T3kPlayerContextProvider({
       modelUrl: string;
       ir: { url: string | null; mix?: number; gain?: number };
       bypassed: boolean;
+      forceA2Nano?: boolean;
     }): Promise<void> => {
       const currentModelUrl = audioState.modelUrl;
       const currentIrUrl = audioState.irUrl;
 
       if (currentModelUrl !== config.modelUrl) {
-        await loadModel(config.modelUrl);
+        await loadModel(config.modelUrl, config.forceA2Nano);
       }
       if (config.ir.url) {
         if (currentIrUrl !== config.ir.url) {

@@ -10,13 +10,6 @@ import { InfoIcon } from 'lucide-react';
 import { PREVIEW_MODE } from './types';
 import { DEFAULT_INPUTS, DEFAULT_IRS, DEFAULT_MODELS } from './constants';
 
-// Tag every default as A1 so the `architecture='2'` filter yields no matches —
-// exercises the disabled-state path without shipping A2 example NAMs.
-const A1_MODELS = DEFAULT_MODELS.map(m => ({
-  ...m,
-  architecture: '1' as const,
-})) as unknown as typeof DEFAULT_MODELS;
-
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
   <p className='text-xs uppercase tracking-wider text-zinc-500'>{children}</p>
 );
@@ -26,12 +19,12 @@ const PreviewContent: React.FC = () => {
     <div className='neural-amp-modeler' style={{ minHeight: '100vh' }}>
       <div className='p-5 flex justify-center items-center'>
         <div className='flex flex-col gap-6 max-w-[700px] w-full'>
-          <SectionLabel>SlimPlayer — no architecture filter (A1 model)</SectionLabel>
+          <SectionLabel>SlimPlayer — baseline</SectionLabel>
           <div className='flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800'>
             <T3kSlimPlayer
               id='slim-player-1'
               getData={async () => ({
-                model: A1_MODELS[0],
+                model: DEFAULT_MODELS[0],
                 ir: DEFAULT_IRS[1],
                 input: DEFAULT_INPUTS[0],
               })}
@@ -40,7 +33,8 @@ const PreviewContent: React.FC = () => {
               }
             />
             <span className='text-sm text-zinc-400'>
-              {A1_MODELS[0].name} - {DEFAULT_INPUTS[0].name} - {DEFAULT_IRS[1].name}
+              {DEFAULT_MODELS[0].name} - {DEFAULT_INPUTS[0].name} -{' '}
+              {DEFAULT_IRS[1].name}
             </span>
           </div>
 
@@ -50,7 +44,7 @@ const PreviewContent: React.FC = () => {
               id='slim-player-disabled'
               disabled
               getData={async () => ({
-                model: A1_MODELS[0],
+                model: DEFAULT_MODELS[0],
                 ir: DEFAULT_IRS[1],
                 input: DEFAULT_INPUTS[0],
               })}
@@ -58,22 +52,25 @@ const PreviewContent: React.FC = () => {
             <span className='text-sm text-zinc-400'>Forced disabled</span>
           </div>
 
-          <SectionLabel>T3kPlayer — baseline (no architecture filter)</SectionLabel>
+          <SectionLabel>T3kPlayer — baseline</SectionLabel>
           <T3kPlayer
             id='player-baseline'
             isLoading={false}
             previewMode={PREVIEW_MODE.MODEL}
-            models={A1_MODELS}
+            models={DEFAULT_MODELS}
             onPlayDemo={({ model, input, ir }) =>
               console.log('play', { model, input, ir })
             }
           />
 
-          <SectionLabel>T3kPlayer — architecture="2", no matching models → disabled card</SectionLabel>
+          <SectionLabel>
+            T3kPlayer — forceA2Nano (no-op on non-slimmable defaults; locks
+            SlimmableContainer models to nano)
+          </SectionLabel>
           <T3kPlayer
-            id='player-arch-no-match'
-            architecture='2'
-            models={A1_MODELS}
+            id='player-force-nano'
+            forceA2Nano
+            models={DEFAULT_MODELS}
             infoSlot={<InfoIcon size={20} className='text-zinc-400' />}
           />
 
@@ -81,7 +78,7 @@ const PreviewContent: React.FC = () => {
           <T3kPlayer
             id='player-forced-disabled'
             disabled
-            models={A1_MODELS}
+            models={DEFAULT_MODELS}
             infoSlot={<InfoIcon size={20} className='text-zinc-400' />}
           />
 
@@ -95,7 +92,7 @@ const PreviewContent: React.FC = () => {
             id='acordian-baseline'
             previewMode={PREVIEW_MODE.MODEL}
             getData={async () => ({
-              models: A1_MODELS,
+              models: DEFAULT_MODELS,
               irs: DEFAULT_IRS,
               inputs: DEFAULT_INPUTS,
             })}
@@ -107,7 +104,7 @@ const PreviewContent: React.FC = () => {
             disabled
             previewMode={PREVIEW_MODE.MODEL}
             getData={async () => ({
-              models: A1_MODELS,
+              models: DEFAULT_MODELS,
               irs: DEFAULT_IRS,
               inputs: DEFAULT_INPUTS,
             })}

@@ -63,17 +63,6 @@ const PreviewContent: React.FC = () => {
             }
           />
 
-          <SectionLabel>
-            T3kPlayer — forceA2Nano (no-op on non-slimmable defaults; locks
-            SlimmableContainer models to nano)
-          </SectionLabel>
-          <T3kPlayer
-            id='player-force-nano'
-            forceA2Nano
-            models={DEFAULT_MODELS}
-            infoSlot={<InfoIcon size={20} className='text-zinc-400' />}
-          />
-
           <SectionLabel>T3kPlayer — disabled prop</SectionLabel>
           <T3kPlayer
             id='player-forced-disabled'

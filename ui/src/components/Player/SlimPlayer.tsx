@@ -11,6 +11,7 @@ const SlimPlayerFC: React.FC<T3kSlimPlayerProps> = ({
   getData,
   size = 40,
   disabled = false,
+  forceA2Nano = false,
 }) => {
   const {
     audioState,
@@ -75,7 +76,7 @@ const SlimPlayerFC: React.FC<T3kSlimPlayerProps> = ({
       }
 
       if (audioState.initState !== 'ready') {
-        await init({ audioUrl: input.url });
+        await init({ audioUrl: input.url, forceA2Nano });
       }
 
       if (isThisPlayerActive) {
@@ -91,6 +92,7 @@ const SlimPlayerFC: React.FC<T3kSlimPlayerProps> = ({
           modelUrl: model.url,
           ir: { url: ir.url, mix: ir.mix, gain: ir.gain },
           bypassed: false,
+          forceA2Nano,
         });
 
         setPlaying(true, id);
@@ -116,6 +118,7 @@ const SlimPlayerFC: React.FC<T3kSlimPlayerProps> = ({
     syncEngineSettings,
     setPlaying,
     onPlayDemo,
+    forceA2Nano,
   ]);
 
   if (disabled) {

@@ -18,6 +18,7 @@ interface UsePlayerCoreOptions {
   id?: string;
   previewMode?: string;
   disabled?: boolean;
+  forceA2Nano?: boolean;
 
   // Data arrays — Player passes non-null arrays, AcordianPlayer passes nullable
   models: Model[] | null;
@@ -90,6 +91,7 @@ export function usePlayerCore(
   const {
     id: idProp,
     disabled = false,
+    forceA2Nano = false,
     models,
     irs,
     inputs,
@@ -215,9 +217,10 @@ export function usePlayerCore(
         modelUrl: model.url,
         ir: { url: ir.url, mix: ir.mix, gain: ir.gain },
         bypassed: bypassState,
+        forceA2Nano,
       });
     },
-    [syncEngineSettings]
+    [syncEngineSettings, forceA2Nano]
   );
 
   // --- Effects ---
@@ -382,7 +385,7 @@ export function usePlayerCore(
       const { model, ir, input } = await ensureSelections();
 
       if (audioState.initState !== 'ready') {
-        await init({ audioUrl: input.url });
+        await init({ audioUrl: input.url, forceA2Nano });
       }
 
       if (isActive) {
@@ -414,6 +417,7 @@ export function usePlayerCore(
     audioState.audioUrl,
     sourceMode,
     bypassed,
+    forceA2Nano,
     ensureSelections,
     getAudioNodes,
     init,
@@ -451,7 +455,7 @@ export function usePlayerCore(
         setSelectedModel(model);
         try {
           if (audioState.initState === 'ready' && isThisPlayerActive) {
-            await loadModel(model.url);
+            await loadModel(model.url, forceA2Nano);
           }
           onModelChange?.(model);
         } catch (error) {
@@ -459,7 +463,14 @@ export function usePlayerCore(
         }
       }
     },
-    [models, loadModel, onModelChange, audioState.initState, isThisPlayerActive]
+    [
+      models,
+      loadModel,
+      onModelChange,
+      audioState.initState,
+      isThisPlayerActive,
+      forceA2Nano,
+    ]
   );
 
   const handleInputChange = useCallback(

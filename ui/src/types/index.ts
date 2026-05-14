@@ -1,12 +1,9 @@
 import { ReactNode } from 'react';
 
-export type ModelArchitecture = '1' | '2' | 'custom';
-
 export interface Model {
   name: string;
   url: string;
   default?: boolean;
-  architecture?: ModelArchitecture;
 }
 
 export interface IR {
@@ -192,9 +189,10 @@ export interface T3kPlayerProps {
   inputs?: NonEmptyArray<Input>;
   isLoading?: boolean;
   previewMode?: PREVIEW_MODE;
-  // When set, only models whose `architecture` matches this value are playable.
-  // If no qualifying models remain, the player renders in a disabled state.
-  architecture?: ModelArchitecture;
+  // When true, force A2 models to play their nano submodel. The player does
+  // not validate or filter — the caller is responsible for only passing A2
+  // models when this is set. Non-A2 models silently ignore the flag.
+  forceA2Nano?: boolean;
   // When true, the player renders in a disabled state regardless of model contents.
   disabled?: boolean;
   onPlayDemo?: ({

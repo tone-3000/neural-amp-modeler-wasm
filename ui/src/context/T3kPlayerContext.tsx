@@ -590,16 +590,26 @@ export function T3kPlayerContextProvider({
         nodes.irDryGain?.disconnect();
         nodes.irGain?.disconnect();
 
-        // Setup parallel wet/dry signal paths
-        // Wet path: worklet -> IR -> gain -> wet gain -> output
-        audioWorkletNode.connect(newIrNode);
+        // If bypass is active the worklet must stay disconnected from output;
+        // setBypass early-returns when state hasn't changed, so re-wiring here
+        // would leak the processed signal alongside the DI.
+        const isBypassed = nodes.bypassNode
+          ? nodes.bypassNode.gain.value > 0.5
+          : false;
+
+        // Wet path internals: IR -> gain -> wet gain -> output
         newIrNode.connect(nodes.irGain);
         nodes.irGain.connect(nodes.irWetGain);
         nodes.irWetGain.connect(outputGainNode);
 
-        // Dry path: worklet -> dry gain -> output
-        audioWorkletNode.connect(nodes.irDryGain);
+        // Dry path internals: dry gain -> output
         nodes.irDryGain.connect(outputGainNode);
+
+        if (!isBypassed) {
+          // Worklet feeds into both wet and dry paths
+          audioWorkletNode.connect(newIrNode);
+          audioWorkletNode.connect(nodes.irDryGain);
+        }
 
         nodes.irNode = newIrNode;
         setAudioState(prev => ({ ...prev, irUrl: url }));
@@ -631,8 +641,15 @@ export function T3kPlayerContextProvider({
     nodes.irDryGain = null;
     nodes.irGain = null;
 
-    // Reconnect direct path
-    audioWorkletNode.connect(outputGainNode);
+    // If bypass is active the worklet must stay disconnected from output;
+    // setBypass early-returns when state hasn't changed, so re-wiring here
+    // would leak the processed signal alongside the DI.
+    const isBypassed = nodes.bypassNode
+      ? nodes.bypassNode.gain.value > 0.5
+      : false;
+    if (!isBypassed) {
+      audioWorkletNode.connect(outputGainNode);
+    }
     setAudioState(prev => ({ ...prev, irUrl: null }));
   }, [getAudioNodes]);
 

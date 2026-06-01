@@ -136,6 +136,64 @@ interface T3kPlayerContextType {
 // Context
 const T3kPlayerContext = createContext<T3kPlayerContextType | null>(null);
 
+// Wire the worklet's processed signal into the output graph.
+// Uses the IR wet/dry topology when IR nodes exist, otherwise a single direct
+// edge. This is the SINGLE source of truth for processed-path topology — every
+// caller that brings the worklet back online (setBypass, loadIr, removeIr) goes
+// through here, and gates the call on bypass state rather than re-deriving the
+// wiring (which is how the dual DI+processed signal bug crept in).
+function connectProcessedOutput(nodes: AudioNodes): void {
+  const {
+    audioWorkletNode,
+    outputGainNode,
+    irNode,
+    irWetGain,
+    irDryGain,
+    irGain,
+  } = nodes;
+  if (!audioWorkletNode || !outputGainNode) return;
+
+  if (irNode && irWetGain && irDryGain && irGain) {
+    // Wet path: worklet -> IR -> gain -> wet gain -> output
+    audioWorkletNode.connect(irNode);
+    irNode.connect(irGain);
+    irGain.connect(irWetGain);
+    irWetGain.connect(outputGainNode);
+    // Dry path: worklet -> dry gain -> output
+    audioWorkletNode.connect(irDryGain);
+    irDryGain.connect(outputGainNode);
+  } else {
+    // Direct path: worklet -> output
+    audioWorkletNode.connect(outputGainNode);
+  }
+}
+
+// Tear down the worklet's processed signal path. Mirror of
+// connectProcessedOutput; uses targeted disconnects, so callers must only invoke
+// it when the processed path is actually wired (i.e. not already bypassed).
+function disconnectProcessedOutput(nodes: AudioNodes): void {
+  const {
+    audioWorkletNode,
+    outputGainNode,
+    irNode,
+    irWetGain,
+    irDryGain,
+    irGain,
+  } = nodes;
+  if (!audioWorkletNode) return;
+
+  if (irNode && irWetGain && irDryGain && irGain && outputGainNode) {
+    audioWorkletNode.disconnect(irNode);
+    audioWorkletNode.disconnect(irDryGain);
+    irNode.disconnect(irGain);
+    irGain.disconnect(irWetGain);
+    irWetGain.disconnect(outputGainNode);
+    irDryGain.disconnect(outputGainNode);
+  } else if (outputGainNode) {
+    audioWorkletNode.disconnect(outputGainNode);
+  }
+}
+
 // Provider Component
 export function T3kPlayerContextProvider({
   children,
@@ -170,6 +228,11 @@ export function T3kPlayerContextProvider({
 
   const isInitializingRef = useRef<boolean>(false);
   const isInitializedRef = useRef<boolean>(false);
+  // Declarative bypass state, readable synchronously from non-render code paths
+  // (loadIr/removeIr). Mirrors audioState.isBypassed; updated by its only two
+  // writers, setBypass and reset. Reading this instead of sniffing the
+  // (mid-ramp) bypassNode gain avoids a race during IR/model swaps.
+  const isBypassedRef = useRef<boolean>(false);
   const modulePromise = useModule();
 
   // Getter for audio nodes
@@ -543,8 +606,7 @@ export function T3kPlayerContextProvider({
         );
       };
 
-      const { audioContext, audioWorkletNode, outputGainNode } =
-        await pollForNodes();
+      const { audioContext, audioWorkletNode } = await pollForNodes();
       const nodes = getAudioNodes();
 
       try {
@@ -590,28 +652,16 @@ export function T3kPlayerContextProvider({
         nodes.irDryGain?.disconnect();
         nodes.irGain?.disconnect();
 
-        // If bypass is active the worklet must stay disconnected from output;
-        // setBypass early-returns when state hasn't changed, so re-wiring here
-        // would leak the processed signal alongside the DI.
-        const isBypassed = nodes.bypassNode
-          ? nodes.bypassNode.gain.value > 0.5
-          : false;
+        nodes.irNode = newIrNode;
 
-        // Wet path internals: IR -> gain -> wet gain -> output
-        newIrNode.connect(nodes.irGain);
-        nodes.irGain.connect(nodes.irWetGain);
-        nodes.irWetGain.connect(outputGainNode);
-
-        // Dry path internals: dry gain -> output
-        nodes.irDryGain.connect(outputGainNode);
-
-        if (!isBypassed) {
-          // Worklet feeds into both wet and dry paths
-          audioWorkletNode.connect(newIrNode);
-          audioWorkletNode.connect(nodes.irDryGain);
+        // Bring the processed (wet/dry IR) path online — but only if bypass is
+        // off. While bypassed the worklet must stay disconnected from output, or
+        // the processed signal leaks alongside the DI. setBypass rewires the
+        // path when the user toggles bypass back off.
+        if (!isBypassedRef.current) {
+          connectProcessedOutput(nodes);
         }
 
-        nodes.irNode = newIrNode;
         setAudioState(prev => ({ ...prev, irUrl: url }));
       } catch (error) {
         console.error('Error loading IR:', error);
@@ -641,14 +691,11 @@ export function T3kPlayerContextProvider({
     nodes.irDryGain = null;
     nodes.irGain = null;
 
-    // If bypass is active the worklet must stay disconnected from output;
-    // setBypass early-returns when state hasn't changed, so re-wiring here
-    // would leak the processed signal alongside the DI.
-    const isBypassed = nodes.bypassNode
-      ? nodes.bypassNode.gain.value > 0.5
-      : false;
-    if (!isBypassed) {
-      audioWorkletNode.connect(outputGainNode);
+    // Bring the (now IR-less) direct path online — but only if bypass is off, or
+    // the processed signal would leak alongside the DI. setBypass rewires the
+    // path when the user toggles bypass back off.
+    if (!isBypassedRef.current) {
+      connectProcessedOutput(nodes);
     }
     setAudioState(prev => ({ ...prev, irUrl: null }));
   }, [getAudioNodes]);
@@ -662,16 +709,7 @@ export function T3kPlayerContextProvider({
       }
 
       const nodes = getAudioNodes();
-      const {
-        audioWorkletNode,
-        audioContext,
-        bypassNode,
-        outputGainNode,
-        irNode,
-        irWetGain,
-        irDryGain,
-        irGain,
-      } = nodes;
+      const { audioWorkletNode, audioContext, bypassNode } = nodes;
 
       if (!audioWorkletNode || !audioContext || !bypassNode) {
         console.warn('Cannot set bypass: required nodes not available');
@@ -683,37 +721,18 @@ export function T3kPlayerContextProvider({
 
       try {
         if (bypassed) {
-          // Enable bypass
-          if (irNode && irWetGain && irDryGain && irGain && outputGainNode) {
-            // Disconnect IR paths
-            audioWorkletNode.disconnect(irNode);
-            audioWorkletNode.disconnect(irDryGain);
-            irNode.disconnect(irGain);
-            irGain.disconnect(irWetGain);
-            irWetGain.disconnect(outputGainNode);
-            irDryGain.disconnect(outputGainNode);
-          } else if (outputGainNode) {
-            // Disconnect direct path
-            audioWorkletNode.disconnect(outputGainNode);
-          }
+          // Mute the processed path and fade the DI in
+          disconnectProcessedOutput(nodes);
           bypassNode.gain.setTargetAtTime(1, audioContext.currentTime, 0.002);
         } else {
-          // Disable bypass
-          if (irNode && irWetGain && irDryGain && irGain && outputGainNode) {
-            // Reconnect IR paths
-            audioWorkletNode.connect(irNode);
-            irNode.connect(irGain);
-            irGain.connect(irWetGain);
-            irWetGain.connect(outputGainNode);
-            audioWorkletNode.connect(irDryGain);
-            irDryGain.connect(outputGainNode);
-          } else if (outputGainNode) {
-            // Reconnect direct path
-            audioWorkletNode.connect(outputGainNode);
-          }
+          // Bring the processed path back and fade the DI out
+          connectProcessedOutput(nodes);
           bypassNode.gain.setTargetAtTime(0, audioContext.currentTime, 0.002);
         }
 
+        // Keep the synchronous mirror in lockstep with the node + React state so
+        // loadIr/removeIr see the correct bypass state without sniffing the gain.
+        isBypassedRef.current = bypassed;
         setAudioState(prev => ({ ...prev, isBypassed: bypassed }));
       } catch (error) {
         console.error('Error setting bypass:', error);
@@ -1190,6 +1209,8 @@ export function T3kPlayerContextProvider({
     // remove the ir from the engine
     removeIr();
 
+    // keep the bypass mirror in lockstep with the state reset below
+    isBypassedRef.current = false;
     setAudioState(prev => ({
       ...prev,
       // reset the other states

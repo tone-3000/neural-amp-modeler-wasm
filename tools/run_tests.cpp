@@ -293,6 +293,8 @@ int main()
   test_container::test_container_sample_rate_mismatch_throws();
   test_container::test_container_load_from_file();
   test_container::test_container_default_is_max_size();
+  test_container::test_container_reset_only_resets_active_submodel();
+  test_container::test_container_switch_resets_before_activation();
 
   // Render --slim tests
   test_render_slim::test_slim_changes_output();
@@ -317,6 +319,7 @@ int main()
   // A2 fast-path WaveNet: detector coverage + numerical match against generic.
   test_a2_fast::test_detector_matches_nano();
   test_a2_fast::test_detector_matches_standard();
+  test_a2_fast::test_detector_accepts_nonstandard_head_scale();
   test_a2_fast::test_detector_rejects_wrong_channels();
   test_a2_fast::test_detector_rejects_wrong_kernel_sizes();
   test_a2_fast::test_detector_rejects_wrong_activation();

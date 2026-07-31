@@ -195,6 +195,11 @@ export interface T3kPlayerProps {
   forceA2Nano?: boolean;
   // When true, the player renders in a disabled state regardless of model contents.
   disabled?: boolean;
+  // When true, hide the Live source-mode toggle and pin the player to Demo
+  // playback. Use where live input isn't available/wanted — e.g. the in-flow
+  // preview player inside the plugin webview, where mic capture and audio
+  // routing aren't supported. Defaults to false (Demo + Live both shown).
+  demoOnly?: boolean;
   onPlayDemo?: ({
     model,
     ir,

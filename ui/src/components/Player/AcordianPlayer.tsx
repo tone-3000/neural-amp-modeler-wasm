@@ -26,6 +26,7 @@ const PlayerFC: React.FC<T3kAcordianPlayerProps> = ({
   }),
   previewMode,
   forceA2Nano,
+  demoOnly,
   onPlayDemo,
   onPlayLive,
   onModelChange,
@@ -88,7 +89,7 @@ const PlayerFC: React.FC<T3kAcordianPlayerProps> = ({
         <div className='flex items-center gap-4 overflow-hidden min-h-[80px]'>
           {disabled ? (
             <DisabledPlaybar infoSlot={infoSlot} />
-          ) : core.sourceMode === 'demo' ? (
+          ) : demoOnly || core.sourceMode === 'demo' ? (
             <DemoPlaybar
               togglePlay={core.togglePlay}
               isThisPlayerActive={core.isThisPlayerActive}
@@ -127,25 +128,27 @@ const PlayerFC: React.FC<T3kAcordianPlayerProps> = ({
         {expanded && !disabled && (
           <>
             <div className='flex flex-col gap-6'>
-              {/* Toggle between demo and live */}
-              <Tabs
-                tabs={SOURCE_MODE_OPTIONS.map(o => (
-                  <div className='flex gap-2 items-center'>
-                    {o.value === 'demo' ? (
-                      <Demo size={20} />
-                    ) : (
-                      <PlayIcon size={20} />
-                    )}
-                    <span>{o.label === 'Live' ? 'Play' : o.label}</span>
-                  </div>
-                ))}
-                activeTab={SOURCE_MODE_OPTIONS.findIndex(
-                  o => o.value === core.sourceMode
-                )}
-                setActiveTab={index =>
-                  core.handleSourceModeChange(SOURCE_MODE_OPTIONS[index].value)
-                }
-              />
+              {/* Toggle between demo and live (hidden when demoOnly) */}
+              {!demoOnly && (
+                <Tabs
+                  tabs={SOURCE_MODE_OPTIONS.map(o => (
+                    <div className='flex gap-2 items-center'>
+                      {o.value === 'demo' ? (
+                        <Demo size={20} />
+                      ) : (
+                        <PlayIcon size={20} />
+                      )}
+                      <span>{o.label === 'Live' ? 'Play' : o.label}</span>
+                    </div>
+                  ))}
+                  activeTab={SOURCE_MODE_OPTIONS.findIndex(
+                    o => o.value === core.sourceMode
+                  )}
+                  setActiveTab={index =>
+                    core.handleSourceModeChange(SOURCE_MODE_OPTIONS[index].value)
+                  }
+                />
+              )}
               <PlayerSettings
                 previewMode={previewMode}
                 disabled={disabled}

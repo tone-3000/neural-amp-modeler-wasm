@@ -46,7 +46,15 @@ set_target_properties(t3k-wasm-module PROPERTIES COMPILE_FLAGS "-Os -pthread")
 # - Memory growth
 # - Async operations
 # - Threading support
-set_target_properties(t3k-wasm-module PROPERTIES LINK_FLAGS "-Os -sEXPORTED_FUNCTIONS=stringToUTF8,_malloc,_setDsp,_free -sENVIRONMENT=web,worker -sEXPORTED_RUNTIME_METHODS=ccall -sAUDIO_WORKLET -sWASM_WORKERS -sALLOW_MEMORY_GROWTH -sINITIAL_MEMORY=1024MB -sTOTAL_STACK=512MB -sASYNCIFY -pthread")
+# Memory sizing notes:
+# - INITIAL_MEMORY=512MB keeps the up-front commitment low (iOS Jetsam budget);
+#   ALLOW_MEMORY_GROWTH lets the heap grow on demand up to the maximum set in
+#   t3k-wasm-module.patch (1GB mobile / 2GB desktop).
+# - TOTAL_STACK only serves the main thread (module init + JSON model parsing).
+#   The audio worklet thread runs on its own dedicated stack (audioThreadStack
+#   in t3k-wasm-module.cpp) and Eigen never stack-allocates here
+#   (EIGEN_STACK_ALLOCATION_LIMIT=0), so 32MB is a generous margin.
+set_target_properties(t3k-wasm-module PROPERTIES LINK_FLAGS "-Os -sEXPORTED_FUNCTIONS=stringToUTF8,_malloc,_setDsp,_free -sENVIRONMENT=web,worker -sEXPORTED_RUNTIME_METHODS=ccall -sAUDIO_WORKLET -sWASM_WORKERS -sALLOW_MEMORY_GROWTH -sINITIAL_MEMORY=512MB -sTOTAL_STACK=32MB -sASYNCIFY -pthread")
 
 # TODO: Support JS Modules
 # set_target_properties(t3k-wasm-module PROPERTIES LINK_FLAGS "-Os -sEXPORTED_FUNCTIONS=stringToUTF8,_malloc,_setDsp,_free -sENVIRONMENT=web,worker -sEXPORTED_RUNTIME_METHODS=ccall -sAUDIO_WORKLET -sWASM_WORKERS -sALLOW_MEMORY_GROWTH -sINITIAL_MEMORY=1024MB -sTOTAL_STACK=512MB -sASYNCIFY -sMODULARIZE -sASSERTIONS -sWEBAUDIO_DEBUG -sEXPORT_NAME=coreModule -sEXPORT_ES6=1")

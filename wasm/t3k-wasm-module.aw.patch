@@ -1,0 +1,103 @@
+# Patch for the emscripten-generated AudioWorklet glue (t3k-wasm-module.aw.js).
+#
+# Makes WasmAudioWorkletProcessor.process() allocation-free by replacing
+# for...of / for...in iteration (which allocates iterator objects every
+# 128-frame render quantum) with plain indexed loops.
+#
+# Why: WebKit (iOS/macOS Safari, and all iOS browsers) does not reliably
+# garbage-collect the AudioWorklet thread's JS heap during sustained
+# real-time playback, so any per-quantum allocation accumulates forever
+# (~0.13 MB/s measured) until iOS Jetsam kills the page.
+# See https://bugs.webkit.org and godotengine/godot#107390 for the same
+# class of bug. Fixed upstream in emscripten PR #22753; this patch is
+# needed until the module is rebuilt with a recent emsdk.
+#
+--- t3k-wasm-module.aw.js
++++ t3k-wasm-module.aw.js
+@@ -15,12 +15,17 @@
+       return audioParams;
+     }
+     process(inputList, outputList, parameters) {
+-      let numInputs = inputList.length,
++      var numInputs = inputList.length,
+         numOutputs = outputList.length,
+         numParams = 0,
+         i,
+         j,
+         k,
++        n,
++        m,
++        input,
++        output,
++        channel,
+         dataPtr,
+         stackMemoryNeeded = (numInputs + numOutputs) * 8,
+         oldStackPtr = stackSave(),
+@@ -30,33 +35,39 @@
+         paramsPtr,
+         didProduceAudio,
+         paramArray;
+-      for (i of inputList) stackMemoryNeeded += i.length * 512;
+-      for (i of outputList) stackMemoryNeeded += i.length * 512;
+-      for (i in parameters)
+-        ((stackMemoryNeeded += parameters[i].byteLength + 8), ++numParams);
++      for (i = 0; i < numInputs; ++i)
++        stackMemoryNeeded += inputList[i].length * 512;
++      for (i = 0; i < numOutputs; ++i)
++        stackMemoryNeeded += outputList[i].length * 512;
++      while ((paramArray = parameters[numParams])) {
++        stackMemoryNeeded += paramArray.byteLength + 8;
++        ++numParams;
++      }
+       inputsPtr = stackAlloc(stackMemoryNeeded);
+       k = inputsPtr >> 2;
+       dataPtr = inputsPtr + numInputs * 8;
+-      for (i of inputList) {
+-        HEAPU32[k++] = i.length;
++      for (i = 0; i < numInputs; ++i) {
++        input = inputList[i];
++        HEAPU32[k++] = input.length;
+         HEAPU32[k++] = dataPtr;
+-        for (j of i) {
+-          HEAPF32.set(j, dataPtr >> 2);
++        for (j = 0, n = input.length; j < n; ++j) {
++          HEAPF32.set(input[j], dataPtr >> 2);
+           dataPtr += 512;
+         }
+       }
+       outputsPtr = dataPtr;
+       k = outputsPtr >> 2;
+       outputDataPtr = (dataPtr += numOutputs * 8) >> 2;
+-      for (i of outputList) {
+-        HEAPU32[k++] = i.length;
++      for (i = 0; i < numOutputs; ++i) {
++        HEAPU32[k++] = outputList[i].length;
+         HEAPU32[k++] = dataPtr;
+-        dataPtr += 512 * i.length;
++        dataPtr += 512 * outputList[i].length;
+       }
+       paramsPtr = dataPtr;
+       k = paramsPtr >> 2;
+       dataPtr += numParams * 8;
+-      for (i = 0; (paramArray = parameters[i++]);) {
++      for (i = 0; i < numParams; ++i) {
++        paramArray = parameters[i];
+         HEAPU32[k++] = paramArray.length;
+         HEAPU32[k++] = dataPtr;
+         HEAPF32.set(paramArray, dataPtr >> 2);
+@@ -73,10 +84,12 @@
+           this.userData,
+         ))
+       ) {
+-        for (i of outputList) {
+-          for (j of i) {
++        for (i = 0; i < numOutputs; ++i) {
++          output = outputList[i];
++          for (j = 0, n = output.length; j < n; ++j) {
++            channel = output[j];
+             for (k = 0; k < 128; ++k) {
+-              j[k] = HEAPF32[outputDataPtr++];
++              channel[k] = HEAPF32[outputDataPtr++];
+             }
+           }
+         }

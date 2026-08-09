@@ -37,3 +37,10 @@ patch -p0 < ../../wasm/t3k-wasm-module.patch
 
 # Minify the JavaScript file to reduce its size
 npx terser t3k-wasm-module.js -o t3k-wasm-module.js
+
+# Patch the AudioWorklet glue: make process() allocation-free so WebKit's
+# non-collecting AudioWorklet heap doesn't grow during playback (iOS Jetsam
+# kills). Obsolete once built with emsdk >= 3.1.73 (emscripten PR #22753).
+npx prettier --write t3k-wasm-module.aw.js
+patch -p0 < ../../wasm/t3k-wasm-module.aw.patch
+npx terser t3k-wasm-module.aw.js -o t3k-wasm-module.aw.js

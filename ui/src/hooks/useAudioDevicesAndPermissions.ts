@@ -48,7 +48,7 @@ export function useAudioDevicesAndPermissions({
   onLiveInputLost,
   liveInputConfig,
 }: UseAudioDevicesAndPermissionsParams): UseAudioDevicesAndPermissionsReturn {
-  // --- State ---
+  // State
 
   const [microphonePermission, setMicrophonePermission] =
     useState<MicrophonePermissionState>({
@@ -70,7 +70,7 @@ export function useAudioDevicesAndPermissions({
       selectedDeviceId: null,
     });
 
-  // --- Permission logic ---
+  // Permission logic
 
   const queryBrowserPermission =
     useCallback(async (): Promise<MicrophonePermissionStatus> => {
@@ -151,7 +151,7 @@ export function useAudioDevicesAndPermissions({
   }, [queryBrowserPermission]);
 
   // Request microphone permission.
-  // Only handles the permission prompt — device enumeration is the caller's responsibility.
+  // Only handles the permission prompt; device enumeration is the caller's responsibility.
   // Returns the device ID the user selected in the browser's permission dialog, or null.
   const requestMicrophonePermission = useCallback(async (): Promise<
     string | null
@@ -185,7 +185,7 @@ export function useAudioDevicesAndPermissions({
           const permissionState = await queryBrowserPermission();
           // Firefox doesn't support Permissions API for microphone, so queryBrowserPermission
           // returns 'idle'. If we already tried once (status is 'denied') and get denied again,
-          // Firefox won't re-prompt — treat as blocked.
+          // Firefox won't re-prompt, treat as blocked.
           const alreadyDenied = previousStatus === 'denied';
           if (
             permissionState === 'blocked' ||
@@ -225,7 +225,7 @@ export function useAudioDevicesAndPermissions({
     }
   }, [queryBrowserPermission]);
 
-  // --- Device enumeration ---
+  // Device enumeration
 
   /**
    * Enumerate audio input devices and update state. Self-healing: if the browser
@@ -271,7 +271,7 @@ export function useAudioDevicesAndPermissions({
           stream.getTracks().forEach(t => t.stop());
           setMicrophonePermission({ status: 'granted', error: null });
         } catch {
-          // getUserMedia failed — use the unlabeled devices we already have
+          // getUserMedia failed, use the unlabeled devices we already have
         }
       }
 
@@ -314,7 +314,7 @@ export function useAudioDevicesAndPermissions({
     }
   }, []);
 
-  // --- Output device selection ---
+  // Output device selection
 
   const setOutputDevice = useCallback(
     async (deviceId: string | null): Promise<void> => {
@@ -338,7 +338,7 @@ export function useAudioDevicesAndPermissions({
     [applyOutputRouting]
   );
 
-  // --- Live input unavailable handler ---
+  // Live input unavailable handler
 
   const handleLiveInputUnavailable = useCallback(
     (reason: LiveInputUnavailableReason): void => {
@@ -355,7 +355,7 @@ export function useAudioDevicesAndPermissions({
     [teardownLiveInput, onLiveInputLost]
   );
 
-  // --- Hot-plug detection ---
+  // Hot-plug detection
 
   useEffect(() => {
     if (typeof window === 'undefined' || !navigator.mediaDevices) return;

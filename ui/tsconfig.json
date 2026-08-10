@@ -1,13 +1,14 @@
 {
   "compilerOptions": {
-    "target": "es5",
+    "target": "es2020",
     "module": "esnext",
     "lib": ["dom", "esnext"],
     "jsx": "react",
     "declaration": true,
     "declarationDir": "dist",
     "strict": true,
-    "moduleResolution": "node",
+    "rootDir": "src",
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

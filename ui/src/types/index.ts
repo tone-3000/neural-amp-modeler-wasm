@@ -189,14 +189,16 @@ export interface T3kPlayerProps {
   inputs?: NonEmptyArray<Input>;
   isLoading?: boolean;
   previewMode?: PREVIEW_MODE;
-  // When true, force A2 models to play their nano submodel. The player does
-  // not validate or filter — the caller is responsible for only passing A2
-  // models when this is set. Non-A2 models silently ignore the flag.
-  forceA2Nano?: boolean;
+  // Raw NAM-core slimmable size in [0.0, 1.0] applied to slimmable (A2)
+  // models: NAM core selects the first submodel whose max_value is greater
+  // than this value (e.g. with thresholds [0.5, 1.0], values below 0.5 select
+  // the smaller submodel). Omit to run models at full size. Non-slimmable
+  // models silently ignore it.
+  slimSize?: number;
   // When true, the player renders in a disabled state regardless of model contents.
   disabled?: boolean;
   // When true, hide the Live source-mode toggle and pin the player to Demo
-  // playback. Use where live input isn't available/wanted — e.g. the in-flow
+  // playback. Use where live input isn't available/wanted, e.g. the in-flow
   // preview player inside the plugin webview, where mic capture and audio
   // routing aren't supported. Defaults to false (Demo + Live both shown).
   demoOnly?: boolean;

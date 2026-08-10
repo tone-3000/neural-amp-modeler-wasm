@@ -105,6 +105,21 @@ int ratio_to_channels(double ratio, const std::vector<int>& allowed)
   return allowed[idx];
 }
 
+std::vector<double> get_ratio_breakpoints(const std::vector<std::vector<int>>& per_array_allowed_channels)
+{
+  std::vector<double> breakpoints;
+
+  for (const auto& allowed : per_array_allowed_channels)
+  {
+    for (size_t i = 1; i < allowed.size(); ++i)
+      breakpoints.push_back((double)i / (double)allowed.size());
+  }
+
+  std::sort(breakpoints.begin(), breakpoints.end());
+  breakpoints.erase(std::unique(breakpoints.begin(), breakpoints.end()), breakpoints.end());
+  return breakpoints;
+}
+
 // ============================================================================
 // Extract slimmed weights by walking the full weight vector in set_weights_
 // order, using typed LayerArrayParams for dimensions.
@@ -291,27 +306,7 @@ bool is_full_size(const std::vector<wavenet::LayerArrayParams>& params, const st
 
 } // anonymous namespace
 
-#ifdef _LIBCPP_VERSION
-void SlimmableWavenet::_pending_clear_release()
-{
-  std::atomic_store_explicit(&_pending_staged, std::shared_ptr<StagedSlimModel>{}, std::memory_order_release);
-}
-
-std::shared_ptr<SlimmableWavenet::StagedSlimModel> SlimmableWavenet::_pending_load_acquire() const
-{
-  return std::atomic_load_explicit(&_pending_staged, std::memory_order_acquire);
-}
-
-void SlimmableWavenet::_pending_store_release(std::shared_ptr<StagedSlimModel> p)
-{
-  std::atomic_store_explicit(&_pending_staged, std::move(p), std::memory_order_release);
-}
-
-std::shared_ptr<SlimmableWavenet::StagedSlimModel> SlimmableWavenet::_pending_exchange_take_acq_rel()
-{
-  return std::atomic_exchange_explicit(&_pending_staged, std::shared_ptr<StagedSlimModel>{}, std::memory_order_acq_rel);
-}
-#else
+#if NAM_HAS_ATOMIC_SHARED_PTR
 void SlimmableWavenet::_pending_clear_release()
 {
   _pending_staged.store({}, std::memory_order_release);
@@ -330,6 +325,26 @@ void SlimmableWavenet::_pending_store_release(std::shared_ptr<StagedSlimModel> p
 std::shared_ptr<SlimmableWavenet::StagedSlimModel> SlimmableWavenet::_pending_exchange_take_acq_rel()
 {
   return _pending_staged.exchange({}, std::memory_order_acq_rel);
+}
+#else
+void SlimmableWavenet::_pending_clear_release()
+{
+  std::atomic_store_explicit(&_pending_staged, std::shared_ptr<StagedSlimModel>{}, std::memory_order_release);
+}
+
+std::shared_ptr<SlimmableWavenet::StagedSlimModel> SlimmableWavenet::_pending_load_acquire() const
+{
+  return std::atomic_load_explicit(&_pending_staged, std::memory_order_acquire);
+}
+
+void SlimmableWavenet::_pending_store_release(std::shared_ptr<StagedSlimModel> p)
+{
+  std::atomic_store_explicit(&_pending_staged, std::move(p), std::memory_order_release);
+}
+
+std::shared_ptr<SlimmableWavenet::StagedSlimModel> SlimmableWavenet::_pending_exchange_take_acq_rel()
+{
+  return std::atomic_exchange_explicit(&_pending_staged, std::shared_ptr<StagedSlimModel>{}, std::memory_order_acq_rel);
 }
 #endif
 
@@ -386,6 +401,23 @@ SlimmableWavenet::SlimmableWavenet(std::vector<wavenet::LayerArrayParams> origin
   _rebuild_model(full_channels);
 }
 
+std::vector<int> SlimmableWavenet::_get_channels_for_slimmable_size(const double val) const
+{
+  const size_t num_arrays = _original_params.size();
+  std::vector<int> target(num_arrays);
+
+  for (size_t i = 0; i < num_arrays; i++)
+  {
+    const auto& allowed = _per_array_allowed_channels[i];
+    if (allowed.empty())
+      target[i] = _original_params[i].channels; // Non-slimmable: keep full
+    else
+      target[i] = ratio_to_channels(val, allowed);
+  }
+
+  return target;
+}
+
 std::unique_ptr<DSP> SlimmableWavenet::_create_wavenet_for_channels(const std::vector<int>& target_channels)
 {
   std::vector<float> weights;
@@ -410,8 +442,10 @@ std::unique_ptr<DSP> SlimmableWavenet::_create_wavenet_for_channels(const std::v
     condition_dsp = get_dsp(_condition_dsp_json);
 
   double sampleRate = _current_sample_rate > 0 ? _current_sample_rate : GetExpectedSampleRate();
-  return std::make_unique<wavenet::WaveNet>(_in_channels, *params_ptr, _head_scale, _with_head, std::nullopt,
-                                            std::move(weights), std::move(condition_dsp), sampleRate);
+  auto model = std::make_unique<wavenet::WaveNet>(_in_channels, *params_ptr, _head_scale, _with_head, std::nullopt,
+                                                  std::move(weights), std::move(condition_dsp), sampleRate);
+  model->SetPrewarmOnReset(GetPrewarmOnReset());
+  return model;
 }
 
 void SlimmableWavenet::_rebuild_model(const std::vector<int>& target_channels)
@@ -481,21 +515,23 @@ void SlimmableWavenet::Reset(const double sampleRate, const int maxBufferSize)
     pending->model->Reset(sampleRate, maxBufferSize);
 }
 
+void SlimmableWavenet::SetPrewarmOnReset(const bool prewarmOnReset)
+{
+  DSP::SetPrewarmOnReset(prewarmOnReset);
+  if (_active_model)
+    _active_model->SetPrewarmOnReset(prewarmOnReset);
+  if (auto pending = _pending_load_acquire())
+    pending->model->SetPrewarmOnReset(prewarmOnReset);
+}
+
 void SlimmableWavenet::SetSlimmableSize(const double val)
 {
-  const size_t num_arrays = _original_params.size();
-  std::vector<int> target(num_arrays);
+  _stage_rebuild_model(_get_channels_for_slimmable_size(val));
+}
 
-  for (size_t i = 0; i < num_arrays; i++)
-  {
-    const auto& allowed = _per_array_allowed_channels[i];
-    if (allowed.empty())
-      target[i] = _original_params[i].channels; // Non-slimmable: keep full
-    else
-      target[i] = ratio_to_channels(val, allowed);
-  }
-
-  _stage_rebuild_model(target);
+std::vector<double> SlimmableWavenet::GetSlimmableSizeBreakpoints() const
+{
+  return get_ratio_breakpoints(_per_array_allowed_channels);
 }
 
 // ============================================================================

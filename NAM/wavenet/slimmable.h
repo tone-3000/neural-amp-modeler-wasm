@@ -3,9 +3,19 @@
 #include <memory>
 #include <vector>
 
-#ifdef _LIBCPP_VERSION
-// libc++: std::atomic<std::shared_ptr<T>> is not viable; staging uses deprecated atomic_* free functions.
+// std::atomic<std::shared_ptr<T>> requires C++20 library support (libstdc++ >= GCC 12).
+// Where it is unavailable -- libc++ (any version so far) and older libstdc++ such as the
+// one shipped with GCC 9 -- fall back to the deprecated std::atomic_* free-function
+// overloads for shared_ptr, which provide the same acquire/release semantics. Keyed on the
+// C++20 feature-test macro rather than on a specific standard library so the right path is
+// chosen for every compiler.
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
+  #define NAM_HAS_ATOMIC_SHARED_PTR 1
 #else
+  #define NAM_HAS_ATOMIC_SHARED_PTR 0
+#endif
+
+#if NAM_HAS_ATOMIC_SHARED_PTR
   #include <atomic>
 #endif
 
@@ -48,10 +58,12 @@ public:
   void process(NAM_SAMPLE** input, NAM_SAMPLE** output, const int num_frames) override;
   void prewarm() override;
   void Reset(const double sampleRate, const int maxBufferSize) override;
+  void SetPrewarmOnReset(const bool prewarmOnReset) override;
   void SetSlimmableSize(const double val) override;
+  std::vector<double> GetSlimmableSizeBreakpoints() const override;
 
 protected:
-  int PrewarmSamples() override { return 0; }
+  int GetPrewarmSamples() override { return 0; }
 
 private:
   std::vector<wavenet::LayerArrayParams> _original_params;
@@ -70,17 +82,18 @@ private:
     std::shared_ptr<DSP> model;
     std::vector<int> channels;
   };
-#ifdef _LIBCPP_VERSION
+#if NAM_HAS_ATOMIC_SHARED_PTR
+  std::atomic<std::shared_ptr<StagedSlimModel>> _pending_staged;
+#else
   /// Staged model; synchronized via deprecated std::atomic_* overloads for shared_ptr only.
   std::shared_ptr<StagedSlimModel> _pending_staged;
-#else
-  std::atomic<std::shared_ptr<StagedSlimModel>> _pending_staged;
 #endif
 
   std::vector<int> _current_channels;
   int _current_buffer_size = 0;
   double _current_sample_rate = 0.0;
 
+  std::vector<int> _get_channels_for_slimmable_size(const double val) const;
   std::unique_ptr<DSP> _create_wavenet_for_channels(const std::vector<int>& target_channels);
   void _rebuild_model(const std::vector<int>& target_channels);
   void _stage_rebuild_model(const std::vector<int>& target_channels);

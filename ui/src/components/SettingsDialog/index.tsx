@@ -57,7 +57,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   const isDemoMode = sourceMode === 'demo';
 
   // Derive effective step: if permission isn't granted while on device-select, show permission.
-  // Applies in both modes — demo mode needs permission for output device labels on Firefox/Safari.
+  // Applies in both modes; demo mode needs permission for output device labels on Firefox/Safari.
   const effectiveStep =
     !isInitializing &&
     microphonePermission.status !== 'granted' &&
@@ -85,7 +85,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     [audioState.initState, init, startLiveInput]
   );
 
-  // Imperative open handler — called once by Dialog's onOpen (ref-guarded against StrictMode)
+  // Imperative open handler, called once by Dialog's onOpen (ref-guarded against StrictMode)
   const handleOpen = useCallback(() => {
     setIsInitializing(true);
 
@@ -147,7 +147,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     try {
       const preferredDeviceId = await requestMicrophonePermission();
       // requestMicrophonePermission only handles the permission prompt.
-      // Enumerate devices separately — refreshAudioInputDevices will get labels
+      // Enumerate devices separately: refreshAudioInputDevices will get labels
       // because getUserMedia just ran (self-healing workaround handles Firefox/Safari).
       await Promise.all([
         refreshAudioInputDevices(),

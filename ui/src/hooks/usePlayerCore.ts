@@ -12,15 +12,15 @@ import { initVisualizer, setupVisualizer } from '../utils/visualizer';
 import { formatTime, getDefault } from '../utils/player';
 import { useSourceMode } from './useSourceMode';
 
-// ---------- Options interface ----------
+// Options interface
 
 interface UsePlayerCoreOptions {
   id?: string;
   previewMode?: string;
   disabled?: boolean;
-  forceA2Nano?: boolean;
+  slimSize?: number;
 
-  // Data arrays — Player passes non-null arrays, AcordianPlayer passes nullable
+  // Data arrays: Player passes non-null arrays, AcordianPlayer passes nullable
   models: Model[] | null;
   irs: IR[] | null;
   inputs: Input[] | null;
@@ -36,7 +36,7 @@ interface UsePlayerCoreOptions {
   onIrChange?: (ir: IR) => void;
 }
 
-// ---------- Return interface ----------
+// Return interface
 
 export interface UsePlayerCoreReturn {
   // State
@@ -83,7 +83,7 @@ export interface UsePlayerCoreReturn {
   inputModeType: string;
 }
 
-// ---------- Hook ----------
+// Hook
 
 export function usePlayerCore(
   options: UsePlayerCoreOptions
@@ -91,7 +91,7 @@ export function usePlayerCore(
   const {
     id: idProp,
     disabled = false,
-    forceA2Nano = false,
+    slimSize,
     models,
     irs,
     inputs,
@@ -106,7 +106,7 @@ export function usePlayerCore(
   const generatedId = useId();
   const id = idProp ?? generatedId;
 
-  // --- Context ---
+  // Context
   const {
     audioState,
     audioInputDevices,
@@ -126,7 +126,7 @@ export function usePlayerCore(
     openSettingsDialog: openDialog,
   } = useT3kPlayerContext();
 
-  // --- Source mode hook (per-player) ---
+  // Source mode hook (per-player)
   const {
     sourceMode,
     liveDeviceOptions,
@@ -134,12 +134,12 @@ export function usePlayerCore(
     handleLiveDeviceChange,
   } = useSourceMode({ playerId: id });
 
-  // --- Derived from context ---
+  // Derived from context
   const isLiveConfigured = audioState.liveInputConfig !== null;
   const currentDeviceId = audioState.liveInputConfig?.deviceId ?? null;
   const isThisPlayerActive = audioState.activePlayerId === id;
 
-  // --- Selection state ---
+  // Selection state
   const [selectedModel, setSelectedModel] = useState<Model | null>(() =>
     models ? getDefault(models) : null
   );
@@ -173,12 +173,12 @@ export function usePlayerCore(
     }
   }, [isThisPlayerActive, audioState.isBypassed]);
 
-  // --- Refs ---
+  // Refs
   const visualizerRef = useRef<HTMLCanvasElement>(null);
   const visualizerNodeRef = useRef<AnalyserNode | null>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
 
-  // --- Memoized options ---
+  // Memoized options
   const modelOptions = useMemo(
     () => (models ?? []).map(m => ({ label: m.name, value: m.url })),
     [models]
@@ -192,7 +192,7 @@ export function usePlayerCore(
     [irs]
   );
 
-  // --- Helpers ---
+  // Helpers
   const ensureSelections = useCallback(async (): Promise<{
     model: Model;
     ir: IR;
@@ -217,13 +217,13 @@ export function usePlayerCore(
         modelUrl: model.url,
         ir: { url: ir.url, mix: ir.mix, gain: ir.gain },
         bypassed: bypassState,
-        forceA2Nano,
+        slimSize,
       });
     },
-    [syncEngineSettings, forceA2Nano]
+    [syncEngineSettings, slimSize]
   );
 
-  // --- Effects ---
+  // Effects
 
   // Cleanup on unmount
   useEffect(() => {
@@ -246,7 +246,7 @@ export function usePlayerCore(
     return () => window.removeEventListener('resize', handleResize);
   }, [handleResize, sourceMode]);
 
-  // Audio element event listeners — only when THIS player is active
+  // Audio element event listeners, only when THIS player is active
   useEffect(() => {
     if (!isThisPlayerActive) return;
     const audioElement = getAudioNodes().audioElement;
@@ -269,7 +269,7 @@ export function usePlayerCore(
     };
   }, [getAudioNodes, isThisPlayerActive, setPlaying]);
 
-  // Visualizer setup — only when THIS player is active and in demo mode
+  // Visualizer setup, only when THIS player is active and in demo mode
   useEffect(() => {
     if (!isThisPlayerActive) return;
     if (audioState.initState !== 'ready' || !visualizerRef.current) return;
@@ -297,7 +297,7 @@ export function usePlayerCore(
     sourceMode,
   ]);
 
-  // --- Event handlers ---
+  // Event handlers
 
   const setLiveMonitoring = useCallback(
     async (enabled: boolean) => {
@@ -385,7 +385,7 @@ export function usePlayerCore(
       const { model, ir, input } = await ensureSelections();
 
       if (audioState.initState !== 'ready') {
-        await init({ audioUrl: input.url, forceA2Nano });
+        await init({ audioUrl: input.url, slimSize });
       }
 
       if (isActive) {
@@ -417,7 +417,7 @@ export function usePlayerCore(
     audioState.audioUrl,
     sourceMode,
     bypassed,
-    forceA2Nano,
+    slimSize,
     ensureSelections,
     getAudioNodes,
     init,
@@ -455,7 +455,7 @@ export function usePlayerCore(
         setSelectedModel(model);
         try {
           if (audioState.initState === 'ready' && isThisPlayerActive) {
-            await loadModel(model.url, forceA2Nano);
+            await loadModel(model.url, slimSize);
           }
           onModelChange?.(model);
         } catch (error) {
@@ -469,7 +469,7 @@ export function usePlayerCore(
       onModelChange,
       audioState.initState,
       isThisPlayerActive,
-      forceA2Nano,
+      slimSize,
     ]
   );
 

@@ -12,4 +12,5 @@
 #define NEURAL_AMP_MODELER_DSP_VERSION_MINOR 5
 
 /// \brief Patch version number
-#define NEURAL_AMP_MODELER_DSP_VERSION_PATCH 3
+/// (Upstream's v0.5.4 tag ships this as 3 by mistake; corrected here.)
+#define NEURAL_AMP_MODELER_DSP_VERSION_PATCH 4

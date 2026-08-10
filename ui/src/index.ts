@@ -28,3 +28,12 @@ export { default as T3kSlimPlayer } from './components/Player/SlimPlayer';
 export { default as T3kAcordianPlayer } from './components/Player/AcordianPlayer';
 
 export { DEFAULT_MODELS, DEFAULT_IRS, DEFAULT_INPUTS } from './constants';
+
+export {
+  NamEngine,
+  NamNode,
+  NamNodePool,
+  type NamEngineAssets,
+  type NamLoadOptions,
+  type NamModelInfo,
+} from './engine';

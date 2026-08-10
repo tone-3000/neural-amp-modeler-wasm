@@ -1,81 +1,76 @@
-# Find all NAM (Neural Amp Modeler) source files recursively
-file(GLOB_RECURSE NAM_SOURCES ../NAM/*.cpp ../NAM/*.c ../NAM*.h)
+# NAM wasm engine
+#
+# A single-threaded, multi-instance wasm module with no Web Audio or threading
+# scaffolding. It is instantiated exactly once inside a hand-written JS
+# AudioWorkletProcessor (ui/src/engine/nam-worklet.ts), which passes the wasm
+# bytes in directly (no fetch in the worklet scope).
+#
+# This deliberately avoids Emscripten's -sAUDIO_WORKLET / -sWASM_WORKERS /
+# pthreads / SharedArrayBuffer machinery: instantiating the module a second
+# time on the audio worklet thread triggered a ~500 MB wasm recompile storm in
+# WebKit that crossed the iOS Jetsam limit at play time (tab crash).
 
-# Define the tools we want to build
-set(TOOLS t3k-wasm-module)
+file(GLOB_RECURSE NAM_SOURCES ../NAM/*.cpp)
 
-# Create a custom target that depends on all tools
-add_custom_target(tools ALL
-	DEPENDS ${TOOLS})
+add_executable(nam-engine nam-engine.cpp ${NAM_SOURCES})
 
-# Include necessary directories for compilation
-include_directories(tools ..)
-include_directories(tools ${NAM_DEPS_PATH}/eigen)  # Eigen library for matrix operations
-include_directories(tools ${NAM_DEPS_PATH}/nlohmann)  # JSON library
-
-# Create the t3k-wasm-module executable
-add_executable(t3k-wasm-module t3k-wasm-module.cpp ${NAM_SOURCES})
-
-# Define compilation flags for Web Audio compatibility
-# Web Audio API only supports 32-bit float processing
-add_definitions(-DNAM_SAMPLE_FLOAT)
-# Disable Eigen's stack allocation limit to prevent stack overflow
-add_definitions(-DEIGEN_STACK_ALLOCATION_LIMIT=0)
-
-# Group NAM source files in the IDE
-source_group(NAM ${CMAKE_CURRENT_SOURCE_DIR} FILES ${NAM_SOURCES})
-
-# Set C++17 as the required standard
-target_compile_features(${TOOLS} PUBLIC cxx_std_17)
-
-# Configure build properties for all tools
-set_target_properties(${TOOLS}
-	PROPERTIES
-	CXX_VISIBILITY_PRESET hidden  # Hide symbols by default
-	INTERPROCEDURAL_OPTIMIZATION TRUE  # Enable link-time optimization
-	PREFIX ""  # Remove the 'lib' prefix from output files
+target_include_directories(nam-engine PRIVATE
+	..
+	${NAM_DEPS_PATH}/eigen
+	${NAM_DEPS_PATH}/nlohmann
 )
 
-# Set specific compilation flags for t3k-wasm-module
-set_target_properties(t3k-wasm-module PROPERTIES COMPILE_FLAGS "-Os -pthread")
+target_compile_definitions(nam-engine PRIVATE
+	# Web Audio processes 32-bit floats
+	NAM_SAMPLE_FLOAT
+	# Never let Eigen allocate on the (small) wasm stack
+	EIGEN_STACK_ALLOCATION_LIMIT=0
+	# Inline GEMM optimizations from NAM core
+	NAM_USE_INLINE_GEMM
+)
 
-# Configure Emscripten-specific linker flags for WebAssembly compilation
-# These flags enable:
-# - Web Audio Worklet support
-# - Web Workers
-# - Memory growth
-# - Async operations
-# - Threading support
-# Memory sizing notes:
-# - INITIAL_MEMORY=512MB keeps the up-front commitment low (iOS Jetsam budget);
-#   ALLOW_MEMORY_GROWTH lets the heap grow on demand up to the maximum set in
-#   t3k-wasm-module.patch (1GB mobile / 2GB desktop).
-# - TOTAL_STACK only serves the main thread (module init + JSON model parsing).
-#   The audio worklet thread runs on its own dedicated stack (audioThreadStack
-#   in t3k-wasm-module.cpp) and Eigen never stack-allocates here
-#   (EIGEN_STACK_ALLOCATION_LIMIT=0), so 32MB is a generous margin.
-set_target_properties(t3k-wasm-module PROPERTIES LINK_FLAGS "-Os -sEXPORTED_FUNCTIONS=stringToUTF8,_malloc,_setDsp,_free -sENVIRONMENT=web,worker -sEXPORTED_RUNTIME_METHODS=ccall -sAUDIO_WORKLET -sWASM_WORKERS -sALLOW_MEMORY_GROWTH -sINITIAL_MEMORY=512MB -sTOTAL_STACK=32MB -sASYNCIFY -pthread")
+target_compile_features(nam-engine PUBLIC cxx_std_20)
 
-# TODO: Support JS Modules
-# set_target_properties(t3k-wasm-module PROPERTIES LINK_FLAGS "-Os -sEXPORTED_FUNCTIONS=stringToUTF8,_malloc,_setDsp,_free -sENVIRONMENT=web,worker -sEXPORTED_RUNTIME_METHODS=ccall -sAUDIO_WORKLET -sWASM_WORKERS -sALLOW_MEMORY_GROWTH -sINITIAL_MEMORY=1024MB -sTOTAL_STACK=512MB -sASYNCIFY -sMODULARIZE -sASSERTIONS -sWEBAUDIO_DEBUG -sEXPORT_NAME=coreModule -sEXPORT_ES6=1")
+set_target_properties(nam-engine PROPERTIES
+	CXX_VISIBILITY_PRESET hidden
+	PREFIX ""
+)
 
-# Windows-specific definitions
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	target_compile_definitions(${TOOLS} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-endif()
+# -fwasm-exceptions: native wasm exception handling (Safari >= 15.2), so a bad
+# model file fails nam_loadModel() cleanly instead of aborting the module that
+# every player shares. Near-zero cost on the audio path.
+target_compile_options(nam-engine PRIVATE -Os -msimd128 -fwasm-exceptions)
 
-# Set compiler-specific flags
-if (MSVC)
-	# Microsoft Visual C++ specific flags
-	target_compile_options(${TOOLS} PRIVATE
-		"$<$<CONFIG:DEBUG>:/W4>"  # Warning level 4 in debug mode
-		"$<$<CONFIG:RELEASE>:/O2>"  # Optimization level 2 in release mode
-	)
-else()
-	# GCC/Clang specific flags
-	target_compile_options(${TOOLS} PRIVATE
-		-Wall -Wextra -Wpedantic -Wstrict-aliasing -Wunreachable-code -Weffc++ -Wno-unused-parameter
-		"$<$<CONFIG:DEBUG>:-Og;-ggdb;-Werror>"  # Debug flags with warnings as errors
-		"$<$<CONFIG:RELEASE>:-Os>"  # Size optimization in release mode
-	)
-endif()
+target_link_options(nam-engine PRIVATE
+	-Os
+	-fwasm-exceptions
+	--no-entry
+	# ES module factory: `import createNamEngine from './nam-engine.js'`
+	-sMODULARIZE=1
+	-sEXPORT_ES6=1
+	-sEXPORT_NAME=createNamEngine
+	# node is kept for CI smoke tests. The AudioWorkletGlobalScope matches none
+	# of these environments; that is fine because the worklet passes wasmBinary
+	# in, so the glue never needs fetch/importScripts/fs there.
+	-sENVIRONMENT=web,worker,node
+	# Small non-shared heap that grows on demand. This is the whole point of
+	# the architecture: 64 MB up front instead of 512 MB, and no
+	# SharedArrayBuffer (no COOP/COEP requirement).
+	-sALLOW_MEMORY_GROWTH=1
+	-sINITIAL_MEMORY=64MB
+	-sMAXIMUM_MEMORY=512MB
+	# Model JSON parsing is the deepest stack user (Eigen never stack-allocates
+	# here, see EIGEN_STACK_ALLOCATION_LIMIT). Lives inside linear memory.
+	-sSTACK_SIZE=4MB
+	# Module properties the JS layer passes in; emscripten only honors the ones
+	# declared here (the worklet passes wasmBinary because its scope has no
+	# fetch)
+	-sINCOMING_MODULE_JS_API=wasmBinary,locateFile,instantiateWasm,onRuntimeInitialized,print,printErr
+	# nam_* exports are annotated with EMSCRIPTEN_KEEPALIVE in nam-engine.cpp
+	-sEXPORTED_FUNCTIONS=_malloc,_free
+	-sEXPORTED_RUNTIME_METHODS=stringToUTF8,lengthBytesUTF8,UTF8ToString,HEAPF32,HEAPU8
+	# No filesystem access (models arrive as JSON strings); shrinks the glue
+	-sFILESYSTEM=0
+	# No eval() in the glue (CSP-friendly)
+	-sDYNAMIC_EXECUTION=0
+)

@@ -21,19 +21,22 @@ const PreviewContent: React.FC = () => {
         <div className='flex flex-col gap-6 max-w-[700px] w-full'>
           <SectionLabel>SlimPlayer — baseline</SectionLabel>
           <div className='flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800'>
+            {/* Deliberately different model/DI from the T3kPlayer defaults so
+                cross-player switching is audibly verifiable (e.g. on-device
+                testing without devtools). */}
             <T3kSlimPlayer
               id='slim-player-1'
               getData={async () => ({
-                model: DEFAULT_MODELS[0],
+                model: DEFAULT_MODELS[5],
                 ir: DEFAULT_IRS[1],
-                input: DEFAULT_INPUTS[0],
+                input: DEFAULT_INPUTS[4],
               })}
               onPlayDemo={({ model, input, ir }) =>
                 console.log('slim play', { model, input, ir })
               }
             />
             <span className='text-sm text-zinc-400'>
-              {DEFAULT_MODELS[0].name} - {DEFAULT_INPUTS[0].name} -{' '}
+              {DEFAULT_MODELS[5].name} - {DEFAULT_INPUTS[4].name} -{' '}
               {DEFAULT_IRS[1].name}
             </span>
           </div>
@@ -106,7 +109,10 @@ const PreviewContent: React.FC = () => {
 
 const Preview: React.FC = () => {
   return (
-    <T3kPlayerProvider>
+    // The dev app serves the built engine assets from public/engine
+    // (copied by `npm start`); library consumers get bundler-resolved
+    // defaults and don't need this prop.
+    <T3kPlayerProvider engineAssets={{ assetBaseUrl: '/engine/' }}>
       <PreviewContent />
     </T3kPlayerProvider>
   );

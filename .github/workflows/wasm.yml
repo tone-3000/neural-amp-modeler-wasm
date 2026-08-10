@@ -1,0 +1,37 @@
+name: WASM Engine
+
+on:
+  [workflow_dispatch, pull_request]
+
+jobs:
+  wasm-smoke:
+    name: Build engine + Node smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install emsdk
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git ~/emsdk
+          ~/emsdk/emsdk install latest
+          ~/emsdk/emsdk activate latest
+
+      - name: Build wasm engine
+        run: |
+          source ~/emsdk/emsdk_env.sh
+          ./wasm/build.bash
+
+      - name: Run Node smoke tests
+        run: node tools/smoke/nam-engine-smoke.mjs
+
+      - name: Build ui package
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build

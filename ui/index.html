@@ -7,6 +7,24 @@
   </head>
   <body class="min-h-screen">
     <div id="root"></div>
+    <!-- Dev-only on-screen error reporter (debugging on devices w/o devtools) -->
+    <script>
+      window.addEventListener('error', function (e) {
+        var el = document.createElement('pre');
+        el.style.cssText =
+          'color:#f87171;background:#18181b;padding:12px;margin:8px;white-space:pre-wrap;font-size:12px;position:relative;z-index:9999';
+        el.textContent =
+          'Error: ' + e.message + '\n' + (e.filename || '') + ':' + (e.lineno || '');
+        document.body.appendChild(el);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var el = document.createElement('pre');
+        el.style.cssText =
+          'color:#fbbf24;background:#18181b;padding:12px;margin:8px;white-space:pre-wrap;font-size:12px;position:relative;z-index:9999';
+        el.textContent = 'Unhandled rejection: ' + (e.reason && (e.reason.stack || e.reason.message || e.reason));
+        document.body.appendChild(el);
+      });
+    </script>
     <script type="module" src="/src/preview.tsx"></script>
   </body>
 </html>

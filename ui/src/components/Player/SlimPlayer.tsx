@@ -11,7 +11,7 @@ const SlimPlayerFC: React.FC<T3kSlimPlayerProps> = ({
   getData,
   size = 40,
   disabled = false,
-  forceA2Nano = false,
+  slimSize,
 }) => {
   const {
     audioState,
@@ -42,7 +42,7 @@ const SlimPlayerFC: React.FC<T3kSlimPlayerProps> = ({
 
   const isThisPlayerActive = audioState.activePlayerId === id;
 
-  // Listen for audio ended — reset playback when this player is active
+  // Listen for audio ended: reset playback when this player is active
   useEffect(() => {
     if (!isThisPlayerActive) return;
 
@@ -76,7 +76,7 @@ const SlimPlayerFC: React.FC<T3kSlimPlayerProps> = ({
       }
 
       if (audioState.initState !== 'ready') {
-        await init({ audioUrl: input.url, forceA2Nano });
+        await init({ audioUrl: input.url, slimSize });
       }
 
       if (isThisPlayerActive) {
@@ -92,7 +92,7 @@ const SlimPlayerFC: React.FC<T3kSlimPlayerProps> = ({
           modelUrl: model.url,
           ir: { url: ir.url, mix: ir.mix, gain: ir.gain },
           bypassed: false,
-          forceA2Nano,
+          slimSize,
         });
 
         setPlaying(true, id);
@@ -118,7 +118,7 @@ const SlimPlayerFC: React.FC<T3kSlimPlayerProps> = ({
     syncEngineSettings,
     setPlaying,
     onPlayDemo,
-    forceA2Nano,
+    slimSize,
   ]);
 
   if (disabled) {

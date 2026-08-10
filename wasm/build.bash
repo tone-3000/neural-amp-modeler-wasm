@@ -1,46 +1,26 @@
 #!/bin/bash
+# Build the NAM wasm engine and copy the artifacts into the UI package.
+#
+# Requires an activated emsdk (source ~/emsdk/emsdk_env.sh).
+# Outputs: ui/src/engine/wasm/nam-engine.{js,wasm}
 set -euo pipefail
 
-# Resolve repo root and build dir from the script's own location so the
-# script behaves the same regardless of the caller's working directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${REPO_ROOT}/build"
+
+# Clean build: the directory only ever holds generated files.
+rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
-cd "${BUILD_DIR}"
+printf '*\n' > "${BUILD_DIR}/.gitignore"
 
-# Create a temporary directory and preserve .gitignore
-mkdir -p ../temp
-mv .gitignore ../temp/
+emcmake cmake -S "${REPO_ROOT}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release
+cmake --build "${BUILD_DIR}" -j "$(getconf _NPROCESSORS_ONLN)"
 
-# Clean the build directory
-rm -rf *
+DEST="${REPO_ROOT}/ui/src/engine/wasm"
+mkdir -p "${DEST}"
+cp "${BUILD_DIR}/wasm/nam-engine.js" "${BUILD_DIR}/wasm/nam-engine.wasm" "${DEST}/"
 
-# Restore .gitignore and clean up temp directory
-mv ../temp/.gitignore .
-rm -rf ../temp
-clear
-
-# Configure and build the project using Emscripten
-# -DCMAKE_BUILD_TYPE="Release" sets the build type to Release mode
-# -j4 enables parallel compilation using 4 cores
-# -msimd128: enable WebAssembly SIMD (128-bit vector ops) for faster matrix math
-# -DNAM_USE_INLINE_GEMM: use inline GEMM optimizations from NeuralAmpModelerCore for better performance
-emcmake cmake .. -DCMAKE_BUILD_TYPE="Release" -DCMAKE_CXX_FLAGS="${CXX_FLAGS:-} -msimd128 -DNAM_USE_INLINE_GEMM" && cmake --build . --config=release -j4
-
-# Format the generated JavaScript file for to prep for patching
-cd wasm
-npx prettier --write t3k-wasm-module.js
-
-# Apply custom patch to the generated JavaScript file
-patch -p0 < ../../wasm/t3k-wasm-module.patch
-
-# Minify the JavaScript file to reduce its size
-npx terser t3k-wasm-module.js -o t3k-wasm-module.js
-
-# Patch the AudioWorklet glue: make process() allocation-free so WebKit's
-# non-collecting AudioWorklet heap doesn't grow during playback (iOS Jetsam
-# kills). Obsolete once built with emsdk >= 3.1.73 (emscripten PR #22753).
-npx prettier --write t3k-wasm-module.aw.js
-patch -p0 < ../../wasm/t3k-wasm-module.aw.patch
-npx terser t3k-wasm-module.aw.js -o t3k-wasm-module.aw.js
+echo
+echo "Built:"
+ls -la "${DEST}/nam-engine.js" "${DEST}/nam-engine.wasm"

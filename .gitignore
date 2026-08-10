@@ -41,3 +41,6 @@ Dependencies/AudioDSPTools/
 docs/_build/
 
 example_audio/output.wav
+
+node_modules/
+build-native/

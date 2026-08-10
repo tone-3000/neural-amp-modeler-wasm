@@ -61,6 +61,13 @@ void ContainerModel::prewarm()
   _submodels[active_index].model->prewarm();
 }
 
+void ContainerModel::SetPrewarmOnReset(const bool prewarmOnReset)
+{
+  DSP::SetPrewarmOnReset(prewarmOnReset);
+  for (auto& submodel : _submodels)
+    submodel.model->SetPrewarmOnReset(prewarmOnReset);
+}
+
 void ContainerModel::Reset(const double sampleRate, const int maxBufferSize)
 {
   std::lock_guard<std::mutex> lock(_slim_set_mutex);
@@ -75,7 +82,7 @@ void ContainerModel::Reset(const double sampleRate, const int maxBufferSize)
   _submodels[active_index].model->Reset(sampleRate, maxBufferSize);
 }
 
-void ContainerModel::SetSlimmableSize(const double val)
+size_t ContainerModel::_get_index_for_slimmable_size(const double val) const
 {
   size_t active_index = _submodels.size() - 1;
   for (size_t i = 0; i < _submodels.size(); ++i)
@@ -86,6 +93,12 @@ void ContainerModel::SetSlimmableSize(const double val)
       break;
     }
   }
+  return active_index;
+}
+
+void ContainerModel::SetSlimmableSize(const double val)
+{
+  const size_t active_index = _get_index_for_slimmable_size(val);
 
   // Fast path: no change to active model.
   if (active_index == _active_index.load(std::memory_order_acquire))
@@ -106,6 +119,24 @@ void ContainerModel::SetSlimmableSize(const double val)
 
   // Finally set when we're ready:
   _active_index.store(active_index, std::memory_order_release);
+}
+
+std::vector<double> ContainerModel::GetSlimmableSizeBreakpoints() const
+{
+  std::vector<double> breakpoints;
+  breakpoints.reserve(_submodels.size() - 1);
+
+  for (size_t i = 0; i + 1 < _submodels.size(); ++i)
+    breakpoints.push_back(_submodels[i].max_value);
+
+  return breakpoints;
+}
+
+int ContainerModel::GetPrewarmSamples()
+{
+  const size_t active_index = _active_index.load(std::memory_order_acquire);
+
+  return _submodels[active_index].model->GetPrewarmSamples();
 }
 
 // =============================================================================

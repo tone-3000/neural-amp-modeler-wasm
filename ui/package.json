@@ -1,13 +1,29 @@
 {
   "name": "neural-amp-modeler-wasm",
-  "version": "1.0.77",
+  "version": "2.0.0",
   "description": "Neural Amp Modeler WebAssembly React Component",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.js"
+    },
+    "./engine": {
+      "types": "./dist/engine/index.d.ts",
+      "import": "./dist/engine/index.js"
+    },
+    "./styles.css": "./dist/styles.css",
+    "./dist/styles.css": "./dist/styles.css",
+    "./dist/engine/nam-worklet.js": "./dist/engine/nam-worklet.js",
+    "./dist/engine/nam-engine.wasm": "./dist/engine/nam-engine.wasm"
+  },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "repository": {
     "type": "git",
@@ -25,13 +41,14 @@
   ],
   "homepage": "https://github.com/tone-3000/neural-amp-modeler-wasm#readme",
   "scripts": {
-    "build": "rollup -c rollup.config.mjs",
+    "build": "rollup -c rollup.config.mjs && npm run copy-engine-assets",
+    "copy-engine-assets": "mkdir -p dist/engine && cp src/engine/wasm/nam-engine.wasm dist/engine/",
     "dev": "rollup -c rollup.config.mjs -w",
     "clean": "rimraf dist",
     "prepare": "npm run clean && npm run build",
     "preview": "vite preview",
-    "start": "npm run copy-wasm && vite",
-    "copy-wasm": "mkdir -p public && cp ../build/wasm/t3k-wasm-module.* public/",
+    "start": "npm run build && rm -rf public/engine && cp -r dist/engine public/engine && vite",
+    "test:smoke": "node ../tools/smoke/nam-engine-smoke.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -46,6 +63,7 @@
     "@rollup/plugin-typescript": "^11.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.2.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.4",

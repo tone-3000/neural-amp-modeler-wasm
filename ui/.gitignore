@@ -42,5 +42,5 @@ pnpm-debug.log*
 .parcel-cache
 .vite
 
-# Patch backups from wasm build pipeline
-public/t3k-wasm-module.js.orig
+# Engine assets copied into the dev app by `npm start`
+public/engine

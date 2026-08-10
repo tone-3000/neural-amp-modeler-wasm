@@ -8,8 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from 'react';
-import { useModule } from '../hooks/useModule';
-import { readModel } from '../utils/readModel';
+import { NamEngine, NamNode, NamEngineAssets } from '../engine';
 import { DEFAULT_AUDIO_SRC, DEFAULT_MODELS } from '../constants';
 import {
   InputMode,
@@ -39,20 +38,15 @@ import { useAudioDevicesAndPermissions } from '../hooks/useAudioDevicesAndPermis
  * Audio Initialization Flow
  * ========================
  *
- * The WASM-based audio system has a specific initialization sequence:
+ * 1. init() creates the AudioContext and attaches the NamEngine to it
+ *    (registers the worklet module and fetches the wasm binary).
+ * 2. A single NamNode (an AudioWorkletNode running the NAM wasm engine) is
+ *    created and wired into the audio graph alongside the gain/meter nodes.
+ * 3. A model is loaded into the node (the default placeholder, or the one
+ *    passed to init()); model switches later reuse the same node.
  *
- * 1. init() loads the WASM script and sets up the wasmAudioWorkletCreated callback
- * 2. The WASM only creates AudioContext/AudioWorkletNode when setDsp is called (via loadModel)
- * 3. When WASM creates the audio nodes, it calls our callback with the node references
- * 4. waitForAudioReady() resolves when the callback has executed
- *
- * The init() function handles this entire sequence internally:
- * - Loads the WASM script
- * - Loads a default model to trigger audio initialization
- * - Waits for the callback to execute
- * - Returns only when audio is fully ready
- *
- * After await init(), all audio nodes are guaranteed to exist.
+ * After await init(), all audio nodes are guaranteed to exist. No
+ * SharedArrayBuffer or cross-origin isolation is required.
  */
 
 interface T3kPlayerContextType {
@@ -71,9 +65,9 @@ interface T3kPlayerContextType {
   init: (options?: {
     audioUrl?: string;
     modelUrl?: string;
-    forceA2Nano?: boolean;
+    slimSize?: number;
   }) => Promise<void>;
-  loadModel: (modelUrl: string, forceA2Nano?: boolean) => Promise<void>;
+  loadModel: (modelUrl: string, slimSize?: number) => Promise<void>;
   loadAudio: (src: string) => Promise<void>;
   loadIr: (config: IrConfig) => Promise<void>;
   removeIr: () => void;
@@ -86,7 +80,7 @@ interface T3kPlayerContextType {
     modelUrl: string;
     ir: { url: string | null; mix?: number; gain?: number };
     bypassed: boolean;
-    forceA2Nano?: boolean;
+    slimSize?: number;
   }) => Promise<void>;
 
   // Input mode actions
@@ -139,8 +133,15 @@ const T3kPlayerContext = createContext<T3kPlayerContextType | null>(null);
 // Provider Component
 export function T3kPlayerContextProvider({
   children,
+  engineAssets,
 }: {
   children: ReactNode;
+  /**
+   * Where to load the engine assets (nam-worklet.js, nam-engine.wasm) from.
+   * Defaults to URLs relative to this package's module (handled automatically
+   * by bundlers that support `new URL(..., import.meta.url)`).
+   */
+  engineAssets?: NamEngineAssets;
 }) {
   // Consolidated state
   const [audioState, setAudioState] = useState<AudioState>({
@@ -155,7 +156,7 @@ export function T3kPlayerContextProvider({
     liveInputConfig: null,
   });
 
-  // Global source mode (demo vs live) — shared by all players
+  // Global source mode (demo vs live), shared by all players
   const [sourceMode, setSourceMode] = useState<SourceMode>('demo');
 
   // Settings dialog state (global, single instance)
@@ -170,7 +171,11 @@ export function T3kPlayerContextProvider({
 
   const isInitializingRef = useRef<boolean>(false);
   const isInitializedRef = useRef<boolean>(false);
-  const modulePromise = useModule();
+  // The NAM worklet node (also stored in audioNodesRef.audioWorkletNode for
+  // graph wiring; this ref keeps the typed NamNode API for model loading).
+  const namNodeRef = useRef<NamNode | null>(null);
+  const engineAssetsRef = useRef<NamEngineAssets | undefined>(engineAssets);
+  engineAssetsRef.current = engineAssets;
 
   // Getter for audio nodes
   const getAudioNodes = useCallback((): AudioNodes => {
@@ -221,20 +226,21 @@ export function T3kPlayerContextProvider({
    *
    * This handles the complete initialization sequence:
    * 1. Loads the audio element for demo playback
-   * 2. Loads the WASM script
-   * 3. Loads a model to trigger WASM audio initialization
-   * 4. Waits for the WASM callback to create audio nodes
+   * 2. Creates the AudioContext and attaches the NamEngine
+   * 3. Creates the NamNode and wires up the audio graph
+   * 4. Loads a model into the node
    *
    * After this function resolves, all audio nodes are guaranteed to exist.
    *
    * @param options.audioUrl - URL for demo audio (uses default if not provided)
    * @param options.modelUrl - URL for NAM model (uses default if not provided)
+   * @param options.slimSize - Raw NAM-core slimmable size for A2 models
    */
   const init = useCallback(
     async (options?: {
       audioUrl?: string;
       modelUrl?: string;
-      forceA2Nano?: boolean;
+      slimSize?: number;
     }): Promise<void> => {
       if (isInitializedRef.current || isInitializingRef.current) return;
 
@@ -242,15 +248,6 @@ export function T3kPlayerContextProvider({
       setAudioState(prev => ({ ...prev, initState: 'initializing' }));
 
       try {
-        // Check browser support
-        if (
-          typeof window === 'undefined' ||
-          !window.AudioContext ||
-          !window.AudioWorklet
-        ) {
-          throw new Error('AudioWorklet not supported in this browser');
-        }
-
         // Create and setup audio element
         const audio = new Audio();
         audio.crossOrigin = 'anonymous';
@@ -286,73 +283,50 @@ export function T3kPlayerContextProvider({
           }));
         });
 
-        // Promise that resolves when WASM callback fires
-        // The callback is set on window because the WASM module expects it there
-        const audioReady = new Promise<void>(resolve => {
-          // @ts-ignore
-          window.wasmAudioWorkletCreated = (
-            node1: AudioWorkletNode,
-            node2: AudioContext
-          ) => {
-            const audioWorkletNode = node1;
-            const context = node2;
-            const nodes = getAudioNodes();
+        // Create the AudioContext and attach the NAM engine (registers the
+        // worklet module + fetches the wasm binary; no SharedArrayBuffer).
+        const context = new AudioContext({ latencyHint: 'interactive' });
+        const engine = await NamEngine.attach(context, engineAssetsRef.current);
+        const namNode = await engine.createNode();
+        namNodeRef.current = namNode;
 
-            // Store nodes
-            nodes.audioWorkletNode = audioWorkletNode;
-            nodes.audioContext = context;
+        const nodes = getAudioNodes();
+        nodes.audioContext = context;
+        nodes.audioWorkletNode = namNode;
 
-            // Create gain nodes
-            nodes.inputGainNode = new GainNode(context, { gain: 1 });
-            nodes.outputGainNode = new GainNode(context, { gain: 1 });
-            nodes.bypassNode = new GainNode(context, { gain: 0 });
+        // Create gain nodes
+        nodes.inputGainNode = new GainNode(context, { gain: 1 });
+        nodes.outputGainNode = new GainNode(context, { gain: 1 });
+        nodes.bypassNode = new GainNode(context, { gain: 0 });
 
-            // Create metering nodes
-            const meterConfig = { fftSize: 2048 };
-            nodes.inputMeterNode = new AnalyserNode(context, meterConfig);
-            nodes.outputMeterNode = new AnalyserNode(context, meterConfig);
+        // Create metering nodes
+        const meterConfig = { fftSize: 2048 };
+        nodes.inputMeterNode = new AnalyserNode(context, meterConfig);
+        nodes.outputMeterNode = new AnalyserNode(context, meterConfig);
 
-            // Create source from audio element
-            nodes.sourceNode = context.createMediaElementSource(
-              nodes.audioElement!
-            );
+        // Create source from audio element
+        nodes.sourceNode = context.createMediaElementSource(
+          nodes.audioElement!
+        );
 
-            // Connect audio graph
-            nodes.sourceNode.connect(nodes.inputGainNode);
-            nodes.inputGainNode.connect(nodes.inputMeterNode!);
-            nodes.inputMeterNode!.connect(nodes.bypassNode);
-            nodes.bypassNode.connect(nodes.outputGainNode);
-            nodes.inputMeterNode!.connect(audioWorkletNode);
-            audioWorkletNode.connect(nodes.outputGainNode);
-            nodes.outputGainNode.connect(nodes.outputMeterNode!);
-            nodes.outputMeterNode!.connect(context.destination);
+        // Connect audio graph
+        nodes.sourceNode.connect(nodes.inputGainNode);
+        nodes.inputGainNode.connect(nodes.inputMeterNode!);
+        nodes.inputMeterNode!.connect(nodes.bypassNode);
+        nodes.bypassNode.connect(nodes.outputGainNode);
+        nodes.inputMeterNode!.connect(namNode);
+        namNode.connect(nodes.outputGainNode);
+        nodes.outputGainNode.connect(nodes.outputMeterNode!);
+        nodes.outputMeterNode!.connect(context.destination);
 
-            context.resume();
-            resolve();
-          };
-        });
+        context.resume();
 
-        // Load WASM module script (callback is already set up above)
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = '/t3k-wasm-module.js';
-          script.async = true;
-          script.onload = () => resolve();
-          script.onerror = () =>
-            reject(new Error('Failed to load audio module'));
-          document.body.appendChild(script);
-        });
-
-        // Load a model to trigger WASM audio initialization
-        // The WASM only creates AudioContext/AudioWorklet when setDsp is called
+        // Load a model into the node (placeholder or the requested one)
         const modelUrl =
           options?.modelUrl ||
           DEFAULT_MODELS.find(m => m.default)?.url ||
           DEFAULT_MODELS[0].url;
-        await loadModelInternal(modelUrl, options?.forceA2Nano);
-
-        // Wait for the WASM callback to execute and create audio nodes
-        await audioReady;
+        await loadModelInternal(modelUrl, options?.slimSize);
 
         // Now fully initialized
         isInitializedRef.current = true;
@@ -374,99 +348,63 @@ export function T3kPlayerContextProvider({
   // Internal model loading function used during init (bypasses isInitializingRef check)
   const loadModelInternal = async (
     modelUrl: string,
-    forceA2Nano?: boolean
+    slimSize?: number
   ): Promise<void> => {
-    // Fetch and process model file
     const response = await fetch(modelUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch model: ${response.statusText}`);
     }
+    const jsonStr = await response.text();
 
-    const blob = await response.blob();
-    const file = new File([blob], 'profile.nam', { type: '.nam' });
-    const jsonStr = (await readModel(file)) as string;
-
-    if (!jsonStr) {
-      throw new Error('Failed to read model - empty response');
+    const namNode = namNodeRef.current;
+    if (!namNode) {
+      throw new Error('NAM node not available');
     }
 
-    if (!modulePromise) {
-      throw new Error('WASM module not available');
+    // The model is parsed on the audio thread, so rendering through the node
+    // pauses for the duration (typically 100-300 ms). I ramp the output down
+    // before the load so the cut is click-free; the worklet fades back in
+    // after the swap.
+    const { audioContext, outputGainNode } = getAudioNodes();
+    const previousGain = outputGainNode?.gain.value ?? 1;
+    const muted =
+      audioContext !== null &&
+      outputGainNode !== null &&
+      audioContext.state === 'running' &&
+      previousGain > 0.001;
+    if (muted) {
+      outputGainNode!.gain.setTargetAtTime(0, audioContext!.currentTime, 0.005);
+      await new Promise(r => setTimeout(r, 30));
     }
 
-    const module = await modulePromise();
-
-    if (!module?._malloc || !module?.stringToUTF8 || !module?.ccall) {
-      throw new Error('WASM module missing required functions');
-    }
-
-    // Allocate memory and load model
-    // Use UTF-8 byte length: jsonStr.length counts characters, but stringToUTF8 writes
-    // UTF-8 bytes. Special chars (e.g. "ö") need 2+ bytes, so we must size correctly.
-    const byteLength = new TextEncoder().encode(jsonStr).length + 1;
-
-    // Retry logic: WASM runtime can have a brief race where Module appears ready
-    // but _malloc fails (e.g. heap/worker not fully initialized). Retry with backoff.
-    const maxAttempts = 3;
-    let lastError: unknown;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        const ptr = module._malloc(byteLength);
-        module.stringToUTF8(jsonStr, ptr, byteLength);
-
-        try {
-          const context = getAudioNodes().audioContext;
-
-          // Suspend context during model loading (if it exists)
-          if (context?.state === 'running') {
-            await context.suspend();
-          }
-
-          // Load DSP - this triggers WASM to create AudioContext/AudioWorklet.
-          // Non-slimmable models silently ignore the forceA2Nano flag.
-          await module.ccall(
-            'setDsp',
-            null,
-            ['number', 'number'],
-            [ptr, forceA2Nano ? 1 : 0],
-            { async: true }
-          );
-          module._free(ptr);
-
-          // Resume context (if it exists)
-          if (context?.state === 'suspended') {
-            await context.resume();
-          }
-
-          setAudioState(prev => ({ ...prev, modelUrl }));
-          return;
-        } catch (error) {
-          module._free(ptr);
-          throw error;
-        }
-      } catch (error) {
-        console.error('Error loading model:', error);
-        lastError = error;
-        if (attempt < maxAttempts - 1) {
-          await new Promise(r => setTimeout(r, 100 * (attempt + 1)));
-        }
+    try {
+      // Non-slimmable models silently ignore slimSize.
+      await namNode.loadModel(jsonStr, { slimSize });
+    } finally {
+      if (muted) {
+        outputGainNode!.gain.setTargetAtTime(
+          previousGain,
+          audioContext!.currentTime,
+          0.01
+        );
       }
     }
-    throw lastError;
+
+    setAudioState(prev => ({ ...prev, modelUrl }));
   };
 
   // Load model (public API with guards)
   // Uses refs for guards to avoid stale closure issues when called
   // immediately after init() within the same event handler
   const loadModel = useCallback(
-    async (modelUrl: string, forceA2Nano?: boolean): Promise<void> => {
+    async (modelUrl: string, slimSize?: number): Promise<void> => {
       if (isInitializingRef.current) {
         throw new Error('Audio system is initializing');
       }
       if (!isInitializedRef.current) {
         throw new Error('Audio system not initialized. Call init() first.');
       }
-      await loadModelInternal(modelUrl, forceA2Nano);
+      await loadModelInternal(modelUrl, slimSize);
     },
     []
   );
@@ -511,41 +449,13 @@ export function T3kPlayerContextProvider({
   );
 
   // Load IR with configuration
-  // NOTE: This function uses a polling pattern to wait for audio nodes. This is defensive
-  // code for edge cases where loadIr might be called before audio nodes are fully available.
-  // In normal usage, callers should ensure init() has completed before calling loadIr().
-  // TODO: Consider removing polling and requiring callers to use isAudioReady() guard.
   const loadIr = useCallback(
     async ({ url, mix = 1, gain = 1 }: IrConfig): Promise<void> => {
-      // Poll for audio nodes with timeout (defensive - see note above)
-      const pollForNodes = async (): Promise<{
-        audioContext: AudioContext;
-        audioWorkletNode: AudioWorkletNode;
-        outputGainNode: GainNode;
-      }> => {
-        const timeout = 5000; // 5 seconds
-        const interval = 50; // 50ms between checks
-        const startTime = Date.now();
-
-        while (Date.now() - startTime < timeout) {
-          const nodes = getAudioNodes();
-          const { audioContext, audioWorkletNode, outputGainNode } = nodes;
-
-          if (audioContext && audioWorkletNode && outputGainNode) {
-            return { audioContext, audioWorkletNode, outputGainNode };
-          }
-          // Wait before next check
-          await new Promise(resolve => setTimeout(resolve, interval));
-        }
-
-        throw new Error(
-          'Audio nodes not initialized after 5 seconds - timeout exceeded'
-        );
-      };
-
-      const { audioContext, audioWorkletNode, outputGainNode } =
-        await pollForNodes();
       const nodes = getAudioNodes();
+      const { audioContext, audioWorkletNode, outputGainNode } = nodes;
+      if (!audioContext || !audioWorkletNode || !outputGainNode) {
+        throw new Error('Audio system not initialized. Call init() first.');
+      }
 
       try {
         // Create or update gain nodes
@@ -636,7 +546,7 @@ export function T3kPlayerContextProvider({
     setAudioState(prev => ({ ...prev, irUrl: null }));
   }, [getAudioNodes]);
 
-  // Set bypass to a specific state (idempotent — reads audio node to determine if action is needed)
+  // Set bypass to a specific state (idempotent, reads the audio node to determine if action is needed)
   const setBypass = useCallback(
     (bypassed: boolean): void => {
       if (!isAudioReady()) {
@@ -711,13 +621,13 @@ export function T3kPlayerContextProvider({
       modelUrl: string;
       ir: { url: string | null; mix?: number; gain?: number };
       bypassed: boolean;
-      forceA2Nano?: boolean;
+      slimSize?: number;
     }): Promise<void> => {
       const currentModelUrl = audioState.modelUrl;
       const currentIrUrl = audioState.irUrl;
 
       if (currentModelUrl !== config.modelUrl) {
-        await loadModel(config.modelUrl, config.forceA2Nano);
+        await loadModel(config.modelUrl, config.slimSize);
       }
       if (config.ir.url) {
         if (currentIrUrl !== config.ir.url) {
@@ -860,7 +770,7 @@ export function T3kPlayerContextProvider({
         const initialChannelIndex = initialChannel === 'first' ? 0 : 1;
 
         // Listen for track ending (device disconnected, permission revoked, etc.)
-        // This is the most reliable signal — Chrome kills the track immediately on permission reset,
+        // This is the most reliable signal: Chrome kills the track immediately on permission reset,
         // but may not fire the Permissions API 'change' event.
         track.addEventListener('ended', () => {
           console.warn('Audio track ended unexpectedly');
@@ -1191,11 +1101,15 @@ export function T3kPlayerContextProvider({
   useEffect(() => {
     const nodesRef = audioNodesRef;
     const initRef = isInitializedRef;
+    const nodeRef = namNodeRef;
     return () => {
       const nodes = nodesRef.current;
+      void nodeRef.current?.dispose();
+      nodeRef.current = null;
       if (nodes.audioContext && nodes.audioContext.state !== 'closed') {
         nodes.audioContext.close();
       }
+      nodes.audioElement?.remove();
       initRef.current = false;
     };
   }, []);
@@ -1333,7 +1247,7 @@ function createNoopContext(): T3kPlayerContextType {
   };
 }
 
-// Custom hook — useContext is called unconditionally to satisfy Rules of Hooks
+// Custom hook; useContext is called unconditionally to satisfy Rules of Hooks
 export function useT3kPlayerContext(): T3kPlayerContextType {
   const context = useContext(T3kPlayerContext);
 

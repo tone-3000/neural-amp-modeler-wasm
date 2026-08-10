@@ -4,6 +4,7 @@ import {
   useT3kPlayerContext,
 } from './T3kPlayerContext';
 import { SettingsDialog } from '../components/SettingsDialog';
+import type { NamEngineAssets } from '../engine';
 
 /** Renders the global settings dialog when open. Included once by T3kPlayerProvider. */
 function SettingsDialogRenderer() {
@@ -36,9 +37,16 @@ function SettingsDialogRenderer() {
  * Recommended provider for the T3k player. Wraps T3kPlayerContextProvider and
  * includes SettingsDialogRenderer once (shared by all players on the page).
  */
-export function T3kPlayerProvider({ children }: { children: ReactNode }) {
+export function T3kPlayerProvider({
+  children,
+  engineAssets,
+}: {
+  children: ReactNode;
+  /** Optional override for where the engine assets are served from. */
+  engineAssets?: NamEngineAssets;
+}) {
   return (
-    <T3kPlayerContextProvider>
+    <T3kPlayerContextProvider engineAssets={engineAssets}>
       {children}
       <SettingsDialogRenderer />
     </T3kPlayerContextProvider>

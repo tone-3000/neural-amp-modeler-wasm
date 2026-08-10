@@ -315,12 +315,12 @@ void nam::wavenet::detail::Layer::Process(const Eigen::MatrixXf& input, const Ei
         // Column-major: need to copy column by column with stride
         const int out_rows = (int)bottleneck;
         const int z_rows = (int)this->_z.rows(); // 2*bottleneck for gated
-        const float* __restrict__ src = this->_z.data();
-        float* __restrict__ dst = this->_output_head.data();
+        const float* NAM_RESTRICT src = this->_z.data();
+        float* NAM_RESTRICT dst = this->_output_head.data();
         for (int f = 0; f < num_frames; f++)
         {
-          const float* __restrict__ src_col = src + f * z_rows;
-          float* __restrict__ dst_col = dst + f * out_rows;
+          const float* NAM_RESTRICT src_col = src + f * z_rows;
+          float* NAM_RESTRICT dst_col = dst + f * out_rows;
           for (int r = 0; r < out_rows; r++)
             dst_col[r] = src_col[r];
         }
@@ -341,9 +341,9 @@ void nam::wavenet::detail::Layer::Process(const Eigen::MatrixXf& input, const Ei
     {
       const int channels = (int)this->get_channels();
       const int total = channels * num_frames;
-      const float* __restrict__ in_ptr = input.data();
-      const float* __restrict__ layer_ptr = this->_layer1x1->GetOutput().data();
-      float* __restrict__ out_ptr = this->_output_next_layer.data();
+      const float* NAM_RESTRICT in_ptr = input.data();
+      const float* NAM_RESTRICT layer_ptr = this->_layer1x1->GetOutput().data();
+      float* NAM_RESTRICT out_ptr = this->_output_next_layer.data();
       int i = 0;
       for (; i + 3 < total; i += 4)
       {
@@ -475,8 +475,8 @@ void nam::wavenet::detail::LayerArray::ProcessInner(const Eigen::MatrixXf& layer
 #ifdef NAM_USE_INLINE_GEMM
     {
       const int total = (int)this->_head_output_size * num_frames;
-      const float* __restrict__ src = this->_layers[i].GetOutputHead().data();
-      float* __restrict__ dst = this->_head_inputs.data();
+      const float* NAM_RESTRICT src = this->_layers[i].GetOutputHead().data();
+      float* NAM_RESTRICT dst = this->_head_inputs.data();
       int j = 0;
       for (; j + 3 < total; j += 4)
       {
@@ -613,7 +613,7 @@ nam::wavenet::WaveNet::WaveNet(const int in_channels,
   this->set_weights_(weights);
 
   // Finally, figure out how much pre-warming is needed for this model.
-  mPrewarmSamples = this->_condition_dsp != nullptr ? this->_condition_dsp->PrewarmSamples() : 1;
+  mPrewarmSamples = this->_condition_dsp != nullptr ? this->_condition_dsp->GetPrewarmSamples() : 1;
   for (size_t i = 0; i < this->_layer_arrays.size(); i++)
     mPrewarmSamples += this->_layer_arrays[i].get_receptive_field();
   if (this->_post_stack_head != nullptr)
@@ -687,6 +687,13 @@ void nam::wavenet::WaveNet::SetMaxBufferSize(const int maxBufferSize)
     this->_post_stack_head->SetMaxBufferSize(maxBufferSize);
     this->_scaled_head_scratch.resize(this->_post_stack_head->in_channels(), maxBufferSize);
   }
+}
+
+void nam::wavenet::WaveNet::SetPrewarmOnReset(const bool prewarmOnReset)
+{
+  DSP::SetPrewarmOnReset(prewarmOnReset);
+  if (this->_condition_dsp != nullptr)
+    this->_condition_dsp->SetPrewarmOnReset(prewarmOnReset);
 }
 
 void nam::wavenet::WaveNet::_process_condition(const int num_frames)
@@ -781,8 +788,8 @@ void nam::wavenet::WaveNet::process(NAM_SAMPLE** input, NAM_SAMPLE** output, con
 
     if (out_channels == 1)
     {
-      const float* __restrict__ src = head_out.data();
-      NAM_SAMPLE* __restrict__ dst = output[0];
+      const float* NAM_RESTRICT src = head_out.data();
+      NAM_SAMPLE* NAM_RESTRICT dst = output[0];
       for (int s = 0; s < num_frames; s++)
         dst[s] = (NAM_SAMPLE)src[s];
     }
@@ -804,8 +811,8 @@ void nam::wavenet::WaveNet::process(NAM_SAMPLE** input, NAM_SAMPLE** output, con
   {
     // Single channel: data is contiguous
     const float scale = this->_head_scale;
-    const float* __restrict__ src = final_head_outputs.data();
-    NAM_SAMPLE* __restrict__ dst = output[0];
+    const float* NAM_RESTRICT src = final_head_outputs.data();
+    NAM_SAMPLE* NAM_RESTRICT dst = output[0];
     for (int s = 0; s < num_frames; s++)
     {
       dst[s] = scale * src[s];

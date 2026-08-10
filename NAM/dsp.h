@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <filesystem>
 #include <iterator>
 #include <memory>
@@ -10,6 +11,7 @@
 #include <Eigen/Dense>
 
 #include "activations.h"
+#include "compiler.h"
 #include "json.hpp"
 #include "model_config.h"
 
@@ -27,10 +29,6 @@
 /// \brief Use a sample rate of -1 if we don't know what the model expects to be run at
 #define NAM_UNKNOWN_EXPECTED_SAMPLE_RATE -1.0
 
-#if defined(_MSC_VER) && !defined(__llvm__)
-  #define __restrict__ __restrict
-#endif
-
 namespace nam
 {
 namespace wavenet
@@ -39,6 +37,24 @@ namespace wavenet
 class WaveNet;
 } // namespace wavenet
 
+/// \brief Temporarily change the thread-local prewarm-on-reset default for newly constructed DSP objects
+///
+/// Existing DSP objects are not affected. DSP instances constructed while this object is alive on the current thread
+/// copy the scoped default into their instance-level prewarm-on-reset setting.
+class ScopedPrewarmOnResetDefault
+{
+public:
+  explicit ScopedPrewarmOnResetDefault(const bool prewarmOnReset);
+  ~ScopedPrewarmOnResetDefault();
+
+  ScopedPrewarmOnResetDefault(const ScopedPrewarmOnResetDefault&) = delete;
+  ScopedPrewarmOnResetDefault& operator=(const ScopedPrewarmOnResetDefault&) = delete;
+
+  bool PreviousPrewarmOnReset() const { return mPreviousPrewarmOnReset; }
+
+private:
+  bool mPreviousPrewarmOnReset;
+};
 
 /// \brief Base class for all DSP models
 ///
@@ -132,22 +148,35 @@ public:
   /// \return true if output level is known, false otherwise
   bool HasOutputLevel();
 
+  /// \brief Get how many samples should be processed for the model to be considered "warmed up"
+  ///
+  /// Override this in subclasses to specify prewarm requirements.
+  /// \return Number of samples needed for prewarm
+  virtual int GetPrewarmSamples() { return 0; };
+
   /// \brief General function for resetting the DSP unit
   ///
-  /// This doesn't call prewarm(). If you want to do that, then you might want to use ResetAndPrewarm().
-  /// See https://github.com/sdatkinson/NeuralAmpModelerCore/issues/96 for the reasoning.
+  /// By default, this calls prewarm() after updating the sample rate and buffer size. Use SetPrewarmOnReset() to
+  /// disable or re-enable that behavior for a DSP instance.
   /// \param sampleRate Current sample rate
   /// \param maxBufferSize Maximum buffer size to process
   virtual void Reset(const double sampleRate, const int maxBufferSize);
 
   /// \brief Reset the DSP unit, then prewarm
+  ///
+  /// Deprecated: ResetAndPrewarm() will be removed in v0.6.0. Reset() prewarms by default; use
+  /// SetPrewarmOnReset() to control whether Reset() calls prewarm().
   /// \param sampleRate Current sample rate
   /// \param maxBufferSize Maximum buffer size to process
-  void ResetAndPrewarm(const double sampleRate, const int maxBufferSize)
-  {
-    Reset(sampleRate, maxBufferSize);
-    prewarm();
-  }
+  void ResetAndPrewarm(const double sampleRate, const int maxBufferSize);
+
+  /// \brief Control whether Reset() calls prewarm()
+  /// \param prewarmOnReset true for Reset() to call prewarm(), false to skip prewarm()
+  virtual void SetPrewarmOnReset(const bool prewarmOnReset);
+
+  /// \brief Check whether Reset() calls prewarm()
+  /// \return true if Reset() calls prewarm()
+  bool GetPrewarmOnReset() const;
 
   /// \brief Set the input level
   /// \param inputLevel Input level in dBu
@@ -165,6 +194,10 @@ public:
   /// \param outputLevel Output level in dBu
   void SetOutputLevel(const double outputLevel);
 
+  /// \brief Get the maximum buffer size
+  /// \return Maximum buffer size
+  int GetMaxBufferSize() const { return mMaxBufferSize; };
+
 protected:
   friend class wavenet::WaveNet; // Allow WaveNet to access protected members. Used in condition DSP.
 
@@ -178,20 +211,11 @@ protected:
   double mExternalSampleRate = -1.0;
   // The largest buffer I expect to be told to process:
   int mMaxBufferSize = 0;
-
-  /// \brief Get how many samples should be processed for the model to be considered "warmed up"
-  ///
-  /// Override this in subclasses to specify prewarm requirements.
-  /// \return Number of samples needed for prewarm
-  virtual int PrewarmSamples() { return 0; };
+  std::atomic<bool> mPrewarmOnReset;
 
   /// \brief Set the maximum buffer size
   /// \param maxBufferSize Maximum number of frames to process in a single call
   virtual void SetMaxBufferSize(const int maxBufferSize);
-
-  /// \brief Get the maximum buffer size
-  /// \return Maximum buffer size
-  int GetMaxBufferSize() const { return mMaxBufferSize; };
 
 private:
   const int mInChannels;
@@ -239,59 +263,6 @@ protected:
   virtual void _update_buffers_(NAM_SAMPLE** input, int num_frames);
   virtual void _rewind_buffers_();
 };
-
-/// \brief Basic linear model
-///
-/// Implements a simple linear convolution, (i.e. an impulse response).
-class Linear : public Buffer
-{
-public:
-  /// \brief Constructor
-  /// \param in_channels Number of input channels
-  /// \param out_channels Number of output channels
-  /// \param receptive_field Size of the impulse response
-  /// \param _bias Whether to use bias
-  /// \param weights Model weights (impulse response coefficients)
-  /// \param expected_sample_rate Expected sample rate in Hz (-1.0 if unknown)
-  Linear(const int in_channels, const int out_channels, const int receptive_field, const bool _bias,
-         const std::vector<float>& weights, const double expected_sample_rate = -1.0);
-
-  /// \brief Process audio frames
-  /// \param input Input audio buffers
-  /// \param output Output audio buffers
-  /// \param num_frames Number of frames to process
-  void process(NAM_SAMPLE** input, NAM_SAMPLE** output, const int num_frames) override;
-
-protected:
-  Eigen::VectorXf _weight;
-  float _bias;
-};
-
-namespace linear
-{
-
-/// \brief Configuration for a Linear model
-struct LinearConfig : public ModelConfig
-{
-  int receptive_field;
-  bool bias;
-  int in_channels;
-  int out_channels;
-
-  std::unique_ptr<DSP> create(std::vector<float> weights, double sampleRate) override;
-};
-
-/// \brief Parse Linear configuration from JSON
-/// \param config JSON configuration object
-/// \return LinearConfig
-LinearConfig parse_config_json(const nlohmann::json& config);
-
-/// \brief Config parser for ConfigParserRegistry
-/// \param config JSON configuration object
-/// \param sampleRate Expected sample rate in Hz
-/// \return unique_ptr<ModelConfig> wrapping a LinearConfig
-std::unique_ptr<ModelConfig> create_config(const nlohmann::json& config, double sampleRate);
-} // namespace linear
 
 // NN modules =================================================================
 
@@ -398,3 +369,5 @@ std::unique_ptr<DSP> get_dsp_legacy(const std::filesystem::path dirname);
 // Instantiate a DSP object from a JSON string. For use in WASM builds.
 std::unique_ptr<DSP> get_dsp(const char* jsonStr);
 }; // namespace nam
+
+#include "linear.h"

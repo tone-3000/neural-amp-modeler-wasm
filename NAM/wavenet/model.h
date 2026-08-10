@@ -58,6 +58,8 @@ public:
   /// \param num_frames Number of frames to process
   void process(NAM_SAMPLE** input, NAM_SAMPLE** output, const int num_frames) override;
 
+  void SetPrewarmOnReset(const bool prewarmOnReset) override;
+
   /// \brief Set model weights from a vector
   /// \param weights Vector containing all model weights
   void set_weights_(std::vector<float>& weights);
@@ -65,6 +67,8 @@ public:
   /// \brief Set model weights from an iterator
   /// \param weights Iterator to the weights vector. Will be advanced as weights are consumed.
   void set_weights_(std::vector<float>::iterator& weights);
+
+  int GetPrewarmSamples() override { return mPrewarmSamples; };
 
 protected:
   // Element-wise arrays:
@@ -111,7 +115,7 @@ private:
   Eigen::MatrixXf _scaled_head_scratch;
 
   int mPrewarmSamples = 0; // Pre-compute during initialization
-  int PrewarmSamples() override { return mPrewarmSamples; };
+
 };
 
 /// \brief Configuration for a WaveNet model

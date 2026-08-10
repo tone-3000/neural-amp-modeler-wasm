@@ -9,15 +9,52 @@
 #include <unordered_set>
 
 #include "dsp.h"
-#include "registry.h"
-
 #define tanh_impl_ std::tanh
 // #define tanh_impl_ fast_tanh_
 
 constexpr const long _INPUT_BUFFER_SAFETY_FACTOR = 32;
 
+namespace
+{
+
+thread_local bool gPrewarmOnResetDefault = true;
+
+class ScopedDSPPrewarmOnReset
+{
+public:
+  ScopedDSPPrewarmOnReset(nam::DSP& dsp, const bool prewarmOnReset)
+  : mDSP(dsp)
+  , mPreviousPrewarmOnReset(dsp.GetPrewarmOnReset())
+  {
+    mDSP.SetPrewarmOnReset(prewarmOnReset);
+  }
+
+  ~ScopedDSPPrewarmOnReset() { mDSP.SetPrewarmOnReset(mPreviousPrewarmOnReset); }
+
+  ScopedDSPPrewarmOnReset(const ScopedDSPPrewarmOnReset&) = delete;
+  ScopedDSPPrewarmOnReset& operator=(const ScopedDSPPrewarmOnReset&) = delete;
+
+private:
+  nam::DSP& mDSP;
+  bool mPreviousPrewarmOnReset;
+};
+
+} // namespace
+
+nam::ScopedPrewarmOnResetDefault::ScopedPrewarmOnResetDefault(const bool prewarmOnReset)
+: mPreviousPrewarmOnReset(gPrewarmOnResetDefault)
+{
+  gPrewarmOnResetDefault = prewarmOnReset;
+}
+
+nam::ScopedPrewarmOnResetDefault::~ScopedPrewarmOnResetDefault()
+{
+  gPrewarmOnResetDefault = mPreviousPrewarmOnReset;
+}
+
 nam::DSP::DSP(const int in_channels, const int out_channels, const double expected_sample_rate)
 : mExpectedSampleRate(expected_sample_rate)
+, mPrewarmOnReset(gPrewarmOnResetDefault)
 , mInChannels(in_channels)
 , mOutChannels(out_channels)
 {
@@ -33,7 +70,7 @@ void nam::DSP::prewarm()
   {
     SetMaxBufferSize(NAM_DEFAULT_MAX_BUFFER_SIZE);
   }
-  const int prewarmSamples = PrewarmSamples();
+  const int prewarmSamples = GetPrewarmSamples();
   if (prewarmSamples == 0)
     return;
 
@@ -98,7 +135,24 @@ void nam::DSP::Reset(const double sampleRate, const int maxBufferSize)
   mHaveExternalSampleRate = true;
   SetMaxBufferSize(maxBufferSize);
 
-  prewarm();
+  if (GetPrewarmOnReset())
+    prewarm();
+}
+
+void nam::DSP::ResetAndPrewarm(const double sampleRate, const int maxBufferSize)
+{
+  ScopedDSPPrewarmOnReset scoped_prewarm_on_reset(*this, true);
+  Reset(sampleRate, maxBufferSize);
+}
+
+void nam::DSP::SetPrewarmOnReset(const bool prewarmOnReset)
+{
+  mPrewarmOnReset.store(prewarmOnReset, std::memory_order_release);
+}
+
+bool nam::DSP::GetPrewarmOnReset() const
+{
+  return mPrewarmOnReset.load(std::memory_order_acquire);
 }
 
 void nam::DSP::SetLoudness(const double loudness)
@@ -250,91 +304,6 @@ void nam::Buffer::_advance_input_buffer_(const int num_frames)
   this->_input_buffer_offset += num_frames;
 }
 
-// Linear =====================================================================
-
-nam::Linear::Linear(const int in_channels, const int out_channels, const int receptive_field, const bool _bias,
-                    const std::vector<float>& weights, const double expected_sample_rate)
-: nam::Buffer(in_channels, out_channels, receptive_field, expected_sample_rate)
-{
-  if ((int)weights.size() != (receptive_field + (_bias ? 1 : 0)))
-    throw std::runtime_error(
-      "Params vector does not match expected size based "
-      "on architecture parameters");
-
-  this->_weight.resize(this->_receptive_field);
-  // Pass in in reverse order so that dot products work out of the box.
-  for (int i = 0; i < this->_receptive_field; i++)
-    this->_weight(i) = weights[receptive_field - 1 - i];
-  this->_bias = _bias ? weights[receptive_field] : (float)0.0;
-}
-
-void nam::Linear::process(NAM_SAMPLE** input, NAM_SAMPLE** output, const int num_frames)
-{
-  this->nam::Buffer::_update_buffers_(input, num_frames);
-
-  const int in_channels = NumInputChannels();
-  const int out_channels = NumOutputChannels();
-
-  // For now, Linear processes each input channel independently to corresponding output channel
-  // This is a simple implementation - can be extended later for cross-channel mixing
-  const int channelsToProcess = std::min(in_channels, out_channels);
-
-  // Main computation!
-  for (int ch = 0; ch < channelsToProcess; ch++)
-  {
-    for (int i = 0; i < num_frames; i++)
-    {
-      const long offset = this->_input_buffer_offset - this->_weight.size() + i + 1;
-      auto input_vec = Eigen::Map<const Eigen::VectorXf>(&this->_input_buffers[ch][offset], this->_receptive_field);
-      output[ch][i] = this->_bias + this->_weight.dot(input_vec);
-    }
-  }
-
-  // Zero out any extra output channels
-  for (int ch = channelsToProcess; ch < out_channels; ch++)
-  {
-    for (int i = 0; i < num_frames; i++)
-      output[ch][i] = (NAM_SAMPLE)0.0;
-  }
-
-  // Prepare for next call:
-  nam::Buffer::_advance_input_buffer_(num_frames);
-}
-
-// Config parser
-nam::linear::LinearConfig nam::linear::parse_config_json(const nlohmann::json& config)
-{
-  LinearConfig c;
-  c.receptive_field = config["receptive_field"];
-  c.bias = config["bias"];
-  // Default to 1 channel in/out for backward compatibility
-  c.in_channels = config.value("in_channels", 1);
-  c.out_channels = config.value("out_channels", 1);
-  return c;
-}
-
-// LinearConfig::create()
-std::unique_ptr<nam::DSP> nam::linear::LinearConfig::create(std::vector<float> weights, double sampleRate)
-{
-  return std::make_unique<nam::Linear>(in_channels, out_channels, receptive_field, bias, weights, sampleRate);
-}
-
-// Config parser for ConfigParserRegistry
-std::unique_ptr<nam::ModelConfig> nam::linear::create_config(const nlohmann::json& config, double sampleRate)
-{
-  (void)sampleRate;
-  auto c = std::make_unique<LinearConfig>();
-  auto parsed = parse_config_json(config);
-  *c = parsed;
-  return c;
-}
-
-// Register the config parser
-namespace
-{
-static nam::ConfigParserHelper _register_Linear("Linear", nam::linear::create_config);
-}
-
 // NN modules =================================================================
 
 // Conv1x1 ====================================================================
@@ -484,9 +453,9 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
     // output(out_ch, frames) = weight(out_ch, in_ch) * input(in_ch, frames)
     const int out_ch = (int)get_out_channels();
     const int in_ch = (int)get_in_channels();
-    const float* __restrict__ input_ptr = input.data();
-    const float* __restrict__ weight_ptr = this->_weight.data();
-    float* __restrict__ output_ptr = _output.data();
+    const float* NAM_RESTRICT input_ptr = input.data();
+    const float* NAM_RESTRICT weight_ptr = this->_weight.data();
+    float* NAM_RESTRICT output_ptr = _output.data();
     // Use outerStride() instead of in_ch to correctly handle non-contiguous
     // block expressions (e.g. topRows()) where outerStride > rows
     const int in_stride = (int)input.outerStride();
@@ -531,7 +500,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       const float w0 = weight_ptr[0], w1 = weight_ptr[1];
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
         output_ptr[f] = w0 * in_col[0] + w1 * in_col[1];
       }
     }
@@ -543,7 +512,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
         const float b0 = this->_bias(0);
         for (int f = 0; f < num_frames; f++)
         {
-          const float* __restrict__ in_col = input_ptr + f * in_stride;
+          const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
           output_ptr[f] = w0 * in_col[0] + w1 * in_col[1] + w2 * in_col[2] + b0;
         }
         bias_fused = true;
@@ -552,7 +521,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       {
         for (int f = 0; f < num_frames; f++)
         {
-          const float* __restrict__ in_col = input_ptr + f * in_stride;
+          const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
           output_ptr[f] = w0 * in_col[0] + w1 * in_col[1] + w2 * in_col[2];
         }
       }
@@ -564,7 +533,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       const float w01 = weight_ptr[2], w11 = weight_ptr[3];
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
         const float i0 = in_col[0];
         const float i1 = in_col[1];
         output_ptr[f * 2] = w00 * i0 + w01 * i1;
@@ -579,7 +548,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       const float w03 = weight_ptr[6], w13 = weight_ptr[7];
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
         const float i0 = in_col[0];
         const float i1 = in_col[1];
         const float i2 = in_col[2];
@@ -594,7 +563,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       const float w2 = weight_ptr[2], w3 = weight_ptr[3];
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
         output_ptr[f] = w0 * in_col[0] + w1 * in_col[1] + w2 * in_col[2] + w3 * in_col[3];
       }
     }
@@ -604,7 +573,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       const float w01 = weight_ptr[4], w11 = weight_ptr[5], w21 = weight_ptr[6], w31 = weight_ptr[7];
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
         const float i0 = in_col[0];
         const float i1 = in_col[1];
         output_ptr[f * 4] = w00 * i0 + w01 * i1;
@@ -623,7 +592,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
         const float b0 = this->_bias(0), b1 = this->_bias(1), b2 = this->_bias(2);
         for (int f = 0; f < num_frames; f++)
         {
-          const float* __restrict__ in_col = input_ptr + f * in_stride;
+          const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
           const float i0 = in_col[0];
           const float i1 = in_col[1];
           const float i2 = in_col[2];
@@ -637,7 +606,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       {
         for (int f = 0; f < num_frames; f++)
         {
-          const float* __restrict__ in_col = input_ptr + f * in_stride;
+          const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
           const float i0 = in_col[0];
           const float i1 = in_col[1];
           const float i2 = in_col[2];
@@ -653,25 +622,64 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       const float w01 = weight_ptr[4], w11 = weight_ptr[5], w21 = weight_ptr[6], w31 = weight_ptr[7];
       const float w02 = weight_ptr[8], w12 = weight_ptr[9], w22 = weight_ptr[10], w32 = weight_ptr[11];
       const float w03 = weight_ptr[12], w13 = weight_ptr[13], w23 = weight_ptr[14], w33 = weight_ptr[15];
+      if (this->_do_bias)
+      {
+        const float b0 = this->_bias(0), b1 = this->_bias(1), b2 = this->_bias(2), b3 = this->_bias(3);
+        for (int f = 0; f < num_frames; f++)
+        {
+          const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
+          const float i0 = in_col[0];
+          const float i1 = in_col[1];
+          const float i2 = in_col[2];
+          const float i3 = in_col[3];
+          output_ptr[f * 4] = w00 * i0 + w01 * i1 + w02 * i2 + w03 * i3 + b0;
+          output_ptr[f * 4 + 1] = w10 * i0 + w11 * i1 + w12 * i2 + w13 * i3 + b1;
+          output_ptr[f * 4 + 2] = w20 * i0 + w21 * i1 + w22 * i2 + w23 * i3 + b2;
+          output_ptr[f * 4 + 3] = w30 * i0 + w31 * i1 + w32 * i2 + w33 * i3 + b3;
+        }
+        bias_fused = true;
+      }
+      else
+      {
+        for (int f = 0; f < num_frames; f++)
+        {
+          const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
+          const float i0 = in_col[0];
+          const float i1 = in_col[1];
+          const float i2 = in_col[2];
+          const float i3 = in_col[3];
+          output_ptr[f * 4] = w00 * i0 + w01 * i1 + w02 * i2 + w03 * i3;
+          output_ptr[f * 4 + 1] = w10 * i0 + w11 * i1 + w12 * i2 + w13 * i3;
+          output_ptr[f * 4 + 2] = w20 * i0 + w21 * i1 + w22 * i2 + w23 * i3;
+          output_ptr[f * 4 + 3] = w30 * i0 + w31 * i1 + w32 * i2 + w33 * i3;
+        }
+      }
+    }
+    else if (out_ch == 4 && in_ch == 6)
+    {
+      const float w00 = weight_ptr[0], w10 = weight_ptr[1], w20 = weight_ptr[2], w30 = weight_ptr[3];
+      const float w01 = weight_ptr[4], w11 = weight_ptr[5], w21 = weight_ptr[6], w31 = weight_ptr[7];
+      const float w02 = weight_ptr[8], w12 = weight_ptr[9], w22 = weight_ptr[10], w32 = weight_ptr[11];
+      const float w03 = weight_ptr[12], w13 = weight_ptr[13], w23 = weight_ptr[14], w33 = weight_ptr[15];
+      const float w04 = weight_ptr[16], w14 = weight_ptr[17], w24 = weight_ptr[18], w34 = weight_ptr[19];
+      const float w05 = weight_ptr[20], w15 = weight_ptr[21], w25 = weight_ptr[22], w35 = weight_ptr[23];
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
-        const float i0 = in_col[0];
-        const float i1 = in_col[1];
-        const float i2 = in_col[2];
-        const float i3 = in_col[3];
-        output_ptr[f * 4] = w00 * i0 + w01 * i1 + w02 * i2 + w03 * i3;
-        output_ptr[f * 4 + 1] = w10 * i0 + w11 * i1 + w12 * i2 + w13 * i3;
-        output_ptr[f * 4 + 2] = w20 * i0 + w21 * i1 + w22 * i2 + w23 * i3;
-        output_ptr[f * 4 + 3] = w30 * i0 + w31 * i1 + w32 * i2 + w33 * i3;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
+        const float i0 = in_col[0], i1 = in_col[1], i2 = in_col[2];
+        const float i3 = in_col[3], i4 = in_col[4], i5 = in_col[5];
+        output_ptr[f * 4] = w00 * i0 + w01 * i1 + w02 * i2 + w03 * i3 + w04 * i4 + w05 * i5;
+        output_ptr[f * 4 + 1] = w10 * i0 + w11 * i1 + w12 * i2 + w13 * i3 + w14 * i4 + w15 * i5;
+        output_ptr[f * 4 + 2] = w20 * i0 + w21 * i1 + w22 * i2 + w23 * i3 + w24 * i4 + w25 * i5;
+        output_ptr[f * 4 + 3] = w30 * i0 + w31 * i1 + w32 * i2 + w33 * i3 + w34 * i4 + w35 * i5;
       }
     }
     else if (out_ch == 6 && in_ch == 6)
     {
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
-        float* __restrict__ out_col = output_ptr + f * 6;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
+        float* NAM_RESTRICT out_col = output_ptr + f * 6;
         const float i0 = in_col[0], i1 = in_col[1], i2 = in_col[2];
         const float i3 = in_col[3], i4 = in_col[4], i5 = in_col[5];
         for (int o = 0; o < 6; o++)
@@ -681,12 +689,27 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
         }
       }
     }
+    else if (out_ch == 8 && in_ch == 6)
+    {
+      for (int f = 0; f < num_frames; f++)
+      {
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
+        float* NAM_RESTRICT out_col = output_ptr + f * 8;
+        const float i0 = in_col[0], i1 = in_col[1], i2 = in_col[2];
+        const float i3 = in_col[3], i4 = in_col[4], i5 = in_col[5];
+        for (int o = 0; o < 8; o++)
+        {
+          out_col[o] = weight_ptr[o] * i0 + weight_ptr[8 + o] * i1 + weight_ptr[16 + o] * i2
+                       + weight_ptr[24 + o] * i3 + weight_ptr[32 + o] * i4 + weight_ptr[40 + o] * i5;
+        }
+      }
+    }
     else if (out_ch == 8 && in_ch == 8)
     {
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
-        float* __restrict__ out_col = output_ptr + f * 8;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
+        float* NAM_RESTRICT out_col = output_ptr + f * 8;
         const float i0 = in_col[0], i1 = in_col[1], i2 = in_col[2], i3 = in_col[3];
         const float i4 = in_col[4], i5 = in_col[5], i6 = in_col[6], i7 = in_col[7];
         for (int o = 0; o < 8; o++)
@@ -701,8 +724,8 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
     {
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
-        float* __restrict__ out_col = output_ptr + f * 4;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
+        float* NAM_RESTRICT out_col = output_ptr + f * 4;
         const float i0 = in_col[0], i1 = in_col[1], i2 = in_col[2], i3 = in_col[3];
         const float i4 = in_col[4], i5 = in_col[5], i6 = in_col[6], i7 = in_col[7];
         for (int o = 0; o < 4; o++)
@@ -717,8 +740,8 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
     {
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
-        float* __restrict__ out_col = output_ptr + f * 8;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
+        float* NAM_RESTRICT out_col = output_ptr + f * 8;
         const float i0 = in_col[0], i1 = in_col[1], i2 = in_col[2], i3 = in_col[3];
         for (int o = 0; o < 8; o++)
         {
@@ -731,8 +754,8 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       // Generic inline GEMM for any matrix size (avoids Eigen overhead for small matrices)
       for (int f = 0; f < num_frames; f++)
       {
-        const float* __restrict__ in_col = input_ptr + f * in_stride;
-        float* __restrict__ out_col = output_ptr + f * out_ch;
+        const float* NAM_RESTRICT in_col = input_ptr + f * in_stride;
+        float* NAM_RESTRICT out_col = output_ptr + f * out_ch;
         for (int o = 0; o < out_ch; o++)
         {
           float sum = 0.0f;
@@ -756,8 +779,8 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
     if (!bias_fused)
     {
       const int out_ch = (int)get_out_channels();
-      float* __restrict__ output_ptr = _output.data();
-      const float* __restrict__ bias_ptr = this->_bias.data();
+      float* NAM_RESTRICT output_ptr = _output.data();
+      const float* NAM_RESTRICT bias_ptr = this->_bias.data();
 
       // Specialized paths for common small channel counts
       if (out_ch == 2)
@@ -798,7 +821,7 @@ void nam::Conv1x1::process_(const Eigen::Ref<const Eigen::MatrixXf>& input, cons
       {
         for (int f = 0; f < num_frames; f++)
         {
-          float* __restrict__ out_col = output_ptr + f * out_ch;
+          float* NAM_RESTRICT out_col = output_ptr + f * out_ch;
           for (int o = 0; o < out_ch; o++)
           {
             out_col[o] += bias_ptr[o];

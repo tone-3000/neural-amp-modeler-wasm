@@ -1,18 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 export default defineConfig({
-  plugins: [react()],
+  // basic-ssl serves the dev app over https with a self-signed cert. Needed
+  // for testing on other devices (e.g. iPhone over LAN): AudioWorklet
+  // requires a secure context, and only localhost is exempt.
+  plugins: [react(), basicSsl()],
   css: {
     postcss: './postcss.config.js',
   },
   server: {
     port: 3000,
     open: true,
-    headers: {
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Opener-Policy': 'same-origin',
-    },
+    // No COOP/COEP headers: the v2 engine needs no SharedArrayBuffer or
+    // cross-origin isolation.
   },
   build: {
     outDir: 'dist',

@@ -20,7 +20,7 @@ const PlayerFC: React.FC<T3kPlayerProps> = ({
   irs = DEFAULT_IRS,
   inputs = DEFAULT_INPUTS,
   previewMode,
-  forceA2Nano,
+  slimSize,
   demoOnly,
   onPlayDemo,
   onPlayLive,
@@ -33,7 +33,7 @@ const PlayerFC: React.FC<T3kPlayerProps> = ({
   const core = usePlayerCore({
     id,
     previewMode,
-    forceA2Nano,
+    slimSize,
     models,
     irs,
     inputs,

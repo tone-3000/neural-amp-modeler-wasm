@@ -10,12 +10,12 @@
 # time on the audio worklet thread triggered a ~500 MB wasm recompile storm in
 # WebKit that crossed the iOS Jetsam limit at play time (tab crash).
 
-file(GLOB_RECURSE NAM_SOURCES ../NAM/*.cpp)
+file(GLOB_RECURSE NAM_SOURCES ../core/NAM/*.cpp)
 
 add_executable(nam-engine nam-engine.cpp ${NAM_SOURCES})
 
 target_include_directories(nam-engine PRIVATE
-	..
+	../core
 	${NAM_DEPS_PATH}/eigen
 	${NAM_DEPS_PATH}/nlohmann
 )

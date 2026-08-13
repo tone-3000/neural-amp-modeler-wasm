@@ -25,8 +25,8 @@
 
 #include <NAM/activations.h>
 #include <NAM/dsp.h>
+#include <NAM/get_dsp.h>
 #include <NAM/slimmable.h>
-#include <NAM/version.h>
 
 namespace
 {
@@ -185,7 +185,9 @@ int nam_loadModel(int id, const char* jsonStr, float slimSize)
 
   try
   {
-    std::unique_ptr<nam::DSP> model = nam::get_dsp(jsonStr);
+    // The browser has no filesystem; the .nam file contents arrive from JS as
+    // a JSON string, parsed here and handed to core's json-object loader.
+    std::unique_ptr<nam::DSP> model = nam::get_dsp(nlohmann::json::parse(jsonStr));
     if (model == nullptr)
     {
       gLastError = "model construction returned null";
@@ -400,10 +402,10 @@ const char* nam_getLastError()
 EMSCRIPTEN_KEEPALIVE
 const char* nam_getVersion()
 {
-  static const std::string version = std::to_string(NEURAL_AMP_MODELER_DSP_VERSION_MAJOR) + "."
-                                     + std::to_string(NEURAL_AMP_MODELER_DSP_VERSION_MINOR) + "."
-                                     + std::to_string(NEURAL_AMP_MODELER_DSP_VERSION_PATCH);
-  return version.c_str();
+  // Hardcoded to the core submodule's pinned release tag rather than derived
+  // from NAM/version.h: the upstream v0.5.4 tag ships version.h with PATCH
+  // mistakenly still set to 3. Update this when bumping the submodule.
+  return "0.5.4";
 }
 
 } // extern "C"

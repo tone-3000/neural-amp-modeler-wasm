@@ -1,38 +1,23 @@
 cmake_minimum_required(VERSION 3.10)
 
-# Make sure this matches ./NAM/version.h!
-project(NAM VERSION 0.5.4)
+project(NAM_WASM)
 
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+# This repo builds only the wasm engine (wasm/) against the NeuralAmpModelerCore
+# submodule (core/). For native tools, tests, and benchmarks, build the
+# submodule directly with its own CMakeLists.
+if (NOT DEFINED EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+	message(FATAL_ERROR "This project only supports Emscripten builds; use ./wasm/build.bash (emcmake).")
+endif()
+
+if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core/NAM/dsp.h")
+	message(FATAL_ERROR "core/ submodule is missing; run: git submodule update --init --recursive")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED OFF)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Use libc++ on macOS, system default on Linux
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-endif()
-
-option(NAM_USE_LIBCXX_LINUX "Use libc++ on Linux (Clang + libc++-dev packages; tests SlimmableWavenet _LIBCPP_VERSION path)" OFF)
-
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-	include_directories(SYSTEM /usr/local/include)
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-	if (NAM_USE_LIBCXX_LINUX)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-		# Clang links libc++/libc++abi; do not pull in libstdc++fs (libstdc++).
-	else()
-		link_libraries(stdc++fs)
-	endif()
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
-elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-	message(FATAL_ERROR "Unrecognized Platform!")
-endif()
-
-set(NAM_DEPS_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies")
-include_directories(SYSTEM "${NAM_DEPS_PATH}/eigen")
+set(NAM_DEPS_PATH "${CMAKE_CURRENT_SOURCE_DIR}/core/Dependencies")
 
 # Build the specialized A2 fast-path WaveNet (A2 standard + A2 nano). When ON,
 # models whose config matches the A2 shape signature are routed to a hand-optimized
@@ -43,16 +28,4 @@ if(NAM_ENABLE_A2_FAST)
 	add_compile_definitions(NAM_ENABLE_A2_FAST)
 endif()
 
-# wasm subdir for emscript builds
-if (DEFINED EMSCRIPTEN)
-	add_subdirectory(wasm)
-else()
-	add_subdirectory(tools)
-endif()
-
-#file(MAKE_DIRECTORY build/tools)
-
-#add_custom_target(copy_tools ALL
-#	${CMAKE_COMMAND} -E copy "$<TARGET_FILE:tools>" tools/
-#	DEPENDS tools
-#)
+add_subdirectory(wasm)

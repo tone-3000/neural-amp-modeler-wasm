@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/neural-amp-modeler-wasm.svg)](https://www.npmjs.com/package/neural-amp-modeler-wasm)
 
-This is a [TONE3000](https://tone3000.com) fork of [Steve Atkinson's Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore) DSP library, adapted to run Neural Amp Modeler inference in web browsers using WebAssembly. This enables real-time audio amp modeling directly in the browser without native plugins.
+This is a [TONE3000](https://tone3000.com) WebAssembly port of [Steve Atkinson's Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore) DSP library, enabling real-time audio amp modeling directly in the browser without native plugins. The core library is consumed unmodified as a git submodule pinned to its latest release (`v0.5.4`); this repo contains only the wasm engine and the UI package.
 
 ![screenshot](https://raw.githubusercontent.com/tone-3000/neural-amp-modeler-wasm/refs/heads/main/ui/public/screenshot.png)
 
@@ -29,14 +29,14 @@ Consequences:
 
 Repo layout:
 
-- `NAM/` — vendored NeuralAmpModelerCore DSP (v0.5.4, A2 + slimmable models)
+- `core/` — [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) submodule, pinned to `v0.5.4` (A2 + slimmable models); brings its own Eigen/nlohmann/AudioDSPTools dependencies
 - `wasm/` — the C API and Emscripten build for the engine
 - `ui/` — the npm package: engine JS layer + React players + demo app
-- `tools/` — native tools, Node smoke tests, browser e2e + memory tests
+- `tools/` — Node smoke tests, browser e2e + memory tests
 
 ## Building
 
-Initialize submodules first (Eigen, AudioDSPTools):
+Clone with submodules (`git clone --recursive`), or initialize them after the fact:
 
 ```bash
 git submodule update --init --recursive
@@ -97,8 +97,23 @@ npm run build    # production build of the npm package into dist/
   RSS and `phys_footprint` (the metric iOS Jetsam kills on). Used to validate the
   v2 architecture: ~50–75 MB footprint vs ~450–570 MB peaks in v1.
 
-- **Native tools** (`tools/`): `run_tests`, `loadmodel`, `benchmodel` from
-  upstream, built via CMake.
+Upstream's native tools, tests, and benchmarks live in the `core/` submodule;
+build them there with core's own CMake project if needed.
+
+## Bumping the core version
+
+```bash
+cd core
+git fetch --tags
+git checkout vX.Y.Z
+cd ..
+./wasm/build.bash && node tools/smoke/nam-engine-smoke.mjs
+git add core && git commit -m "Bump NAM core to vX.Y.Z"
+```
+
+Also update the version string in `nam_getVersion()` (`wasm/nam-engine.cpp`),
+which is hardcoded because the upstream `v0.5.4` tag ships `NAM/version.h` with
+a stale patch number.
 
 ## Using the React component
 
@@ -125,7 +140,7 @@ function App() {
 
 ## Credits
 
-- [Steve Atkinson's NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) — the DSP library this fork builds on.
+- [Steve Atkinson's NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) — the DSP library this port builds on.
 - [openDAW](https://github.com/andremichelle/openDAW) by André Michelle — the
   single-module AudioWorklet architecture the v2 engine is based on.
 - [Kutalia's NeuralAmpModelerCore_WASM](https://github.com/Kutalia/NeuralAmpModelerCore_WASM) — prior art for JSON-string model loading in wasm builds.

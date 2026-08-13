@@ -1,6 +1,6 @@
 # Neural Amp Modeler WebAssembly React Component
 
-This is a [TONE3000](https://tone3000.com) fork of [Steve Atkinson's Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore) DSP library, adapted to run Neural Amp Modeler inference in web browsers using WebAssembly. This enables real-time audio amp modeling directly in the browser without native plugins.
+This is a [TONE3000](https://tone3000.com) WebAssembly port of [Steve Atkinson's Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore) DSP library (built against `v0.5.4`, unmodified), running Neural Amp Modeler inference in web browsers. This enables real-time audio amp modeling directly in the browser without native plugins.
 
 Version 2 uses a lightweight single-threaded wasm engine instantiated inside an AudioWorklet — an architecture inspired by [openDAW](https://github.com/andremichelle/openDAW)'s NAM integration. There is no SharedArrayBuffer, no COOP/COEP header requirement, and no separate wasm files to host: everything ships inside this package. See the [CHANGELOG](./CHANGELOG.md) for the v1 → v2 migration notes.
 
@@ -246,7 +246,7 @@ This package is part of the [neural-amp-modeler-wasm](https://github.com/tone-30
 
 ## Credits
 
-- [Steve Atkinson's NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) — the DSP library this fork builds on.
+- [Steve Atkinson's NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) — the DSP library this port builds on.
 - [openDAW](https://github.com/andremichelle/openDAW) by André Michelle — the
   single-module AudioWorklet architecture that v2's engine is based on.
 - [Kutalia's NeuralAmpModelerCore_WASM](https://github.com/Kutalia/NeuralAmpModelerCore_WASM) — prior art for JSON-string model loading in wasm builds.

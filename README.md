@@ -32,7 +32,7 @@ Repo layout:
 - `core/` — [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) submodule, pinned to `v0.5.4` (A2 + slimmable models); brings its own Eigen/nlohmann/AudioDSPTools dependencies
 - `wasm/` — the C API and Emscripten build for the engine
 - `ui/` — the npm package: engine JS layer + React players + demo app
-- `tools/` — Node smoke tests, browser e2e + memory tests
+- `tools/` — Node smoke tests
 
 ## Building
 
@@ -78,24 +78,6 @@ npm run build    # production build of the npm package into dist/
 
   Covers instance lifecycle, A1/A2 model loads, slimmable sizing, audio
   processing sanity, error handling, and heap stability across model switches.
-
-- **Browser e2e** (Playwright, WebKit + Chromium; drives the real React players
-  in the demo app):
-
-  ```bash
-  cd ui && npm start          # in one terminal (any port; pass --url below)
-  cd tools/e2e && npm install
-  npx playwright install webkit chromium
-  node preview-e2e.mjs --url http://127.0.0.1:3000
-  ```
-
-  Verifies engine init without cross-origin isolation, audible playback,
-  and mid-playback model switching, with no console errors.
-
-- **Memory harness** (`tools/memtest-browser/`): drives the engine under
-  continuous playback and repeated A1/A2 model switches while sampling per-process
-  RSS and `phys_footprint` (the metric iOS Jetsam kills on). Used to validate the
-  v2 architecture: ~50–75 MB footprint vs ~450–570 MB peaks in v1.
 
 Upstream's native tools, tests, and benchmarks live in the `core/` submodule;
 build them there with core's own CMake project if needed.

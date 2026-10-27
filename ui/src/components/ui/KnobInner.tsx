@@ -32,12 +32,13 @@ export const KnobInner: React.FC<KnobInnerProps> = ({ value, size }) => {
 
     // Create gradient stops proportionally within the sweep range
     const stops = [
-      { pos: 0, color: 'rgba(30, 30, 30, 0.3)' }, // was 0.5
-      { pos: 0.2, color: 'rgba(50, 50, 50, 0.6)' },
-      { pos: 0.4, color: 'rgba(100, 100, 100, 0.75)' },
-      { pos: 0.6, color: 'rgba(160, 160, 160, 0.85)' },
-      { pos: 0.8, color: 'rgba(220, 220, 220, 0.9)' },
-      { pos: 1, color: 'rgba(255, 255, 255, 1)' },
+      { pos: 0, color: 'color-mix(in srgb, var(--t3k-fg) 15%, transparent)' },
+      {
+        pos: 0.35,
+        color: 'color-mix(in srgb, var(--t3k-fg) 45%, transparent)',
+      },
+      { pos: 0.7, color: 'color-mix(in srgb, var(--t3k-fg) 80%, transparent)' },
+      { pos: 1, color: 'var(--t3k-fg)' },
     ];
 
     const gradientStops = stops
@@ -64,7 +65,7 @@ export const KnobInner: React.FC<KnobInnerProps> = ({ value, size }) => {
           width: '100%',
           height: '100%',
           borderRadius: '50%',
-          background: `conic-gradient(from 225deg, rgba(50, 50, 50, 0.8) 0deg, rgba(50, 50, 50, 0.1) 270deg, transparent 270deg)`,
+          background: `conic-gradient(from 225deg, var(--t3k-line-strong) 0deg, var(--t3k-line) 270deg, transparent 270deg)`,
         }}
       />
 
@@ -91,7 +92,7 @@ export const KnobInner: React.FC<KnobInnerProps> = ({ value, size }) => {
           width: innerRadius * 2,
           height: innerRadius * 2,
           borderRadius: '50%',
-          backgroundColor: '#1C1C1E',
+          backgroundColor: 'var(--t3k-surface)',
         }}
       />
 
@@ -103,8 +104,8 @@ export const KnobInner: React.FC<KnobInnerProps> = ({ value, size }) => {
           top: '50%',
           width: handleWidth,
           height: handleHeight,
-          backgroundColor: '#ffffff',
-          borderLeft: '2px solid #000000',
+          backgroundColor: 'var(--t3k-fg)',
+          borderLeft: '2px solid var(--t3k-surface)',
           transform: `translate(-50%, -50%) translate(${handleOffsetX}px, ${handleOffsetY}px) rotate(${angleDeg}deg)`,
           transformOrigin: 'center center',
           willChange: 'transform',

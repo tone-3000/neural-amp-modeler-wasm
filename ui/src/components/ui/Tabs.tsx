@@ -1,38 +1,48 @@
-import React from 'react';
-import { ReactNode } from 'react';
+import React, { ReactNode } from 'react';
 
 interface TabProps {
   tabs: (string | ReactNode)[];
   activeTab: number;
   setActiveTab: (index: number) => void;
-  trackColor?: string;
-  trackSize?: number;
-  tightLines?: boolean;
+  disabled?: boolean;
+  /** Stretch tabs across the container (default) or size them to content. */
+  fill?: boolean;
 }
 
 const Tabs = ({
   tabs,
   activeTab,
   setActiveTab,
-  trackColor,
-  trackSize = 2,
-  tightLines = false,
+  disabled = false,
+  fill = true,
 }: TabProps) => {
   return (
-    <div className={`flex width-full ${tightLines ? 'gap-8' : 'gap-0'}`}>
-      {tabs.map((tab, index) => (
-        <button
-          key={index}
-          className={`group flex flex-1 justify-center ${tightLines ? 'px-0' : 'px-4'} py-3 font-semibold transition-colors duration-150 ${
-            index === activeTab
-              ? `active text-white ${trackSize === 1 ? 'border-b' : 'border-b-2'} border-white`
-              : `text-zinc-400 hover:text-white ${trackSize === 1 ? 'border-b' : 'border-b-2'} ${trackColor ? `border-${trackColor}` : 'border-zinc-700'}`
-          }`}
-          onClick={() => setActiveTab(index)}
-        >
-          {tab}
-        </button>
-      ))}
+    <div
+      className={`flex ${fill ? 'w-full' : 'gap-2 sm:gap-4'}`}
+      role='tablist'
+    >
+      {tabs.map((tab, index) => {
+        const active = index === activeTab;
+        return (
+          <button
+            key={index}
+            type='button'
+            role='tab'
+            aria-selected={active}
+            disabled={disabled}
+            className={`flex justify-center py-3 font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors duration-150 disabled:cursor-not-allowed ${
+              fill ? 'flex-1 px-4' : 'px-1'
+            } ${
+              active
+                ? 'text-fg border-fg'
+                : 'text-muted border-transparent hover:text-fg'
+            }`}
+            onClick={() => setActiveTab(index)}
+          >
+            {tab}
+          </button>
+        );
+      })}
     </div>
   );
 };

@@ -8,7 +8,7 @@ import {
 export interface InputMeterProps {
   /** AnalyserNode to read levels from */
   analyser: AnalyserNode | null;
-  /** Number of blocks (optional; defaults to responsive: 40 @ 500px, 30 @ 360px, 20 @ 240px, 12 @ 120px) */
+  /** Number of blocks; by default as many 6px blocks as fit the width. */
   blockCount?: number;
   /** Additional CSS classes */
   className?: string;
@@ -20,14 +20,14 @@ export interface InputMeterProps {
 
 const BLOCK_SIZE = 6;
 const BLOCK_GAP = 3;
-const INACTIVE_COLOR = '#3f3f46'; /* zinc-700 */
+const INACTIVE_COLOR = 'var(--t3k-line)';
 
-// Responsive block count by container width
+// As many square blocks as fit the width, so they never stretch.
 function getBlockCountForWidth(width: number): number {
-  if (width >= 360) return 40;
-  if (width >= 240) return 20;
-  if (width >= 120) return 12;
-  return 8;
+  return Math.max(
+    4,
+    Math.floor((width + BLOCK_GAP) / (BLOCK_SIZE + BLOCK_GAP))
+  );
 }
 
 // Interpolate color along gradient: blue (left) → yellow (middle) → red (right)
@@ -74,7 +74,7 @@ export const InputMeter: React.FC<InputMeterProps> = ({
   inactive = false,
 }) => {
   const [level, setLevel] = useState(0);
-  const [blockCount, setBlockCount] = useState(40);
+  const [blockCount, setBlockCount] = useState(12);
   const containerRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const isRunningRef = useRef(false);
@@ -159,7 +159,16 @@ export const InputMeter: React.FC<InputMeterProps> = ({
       aria-valuemax={100}
       aria-valuenow={Math.round(level * 100)}
     >
-      <div className='flex flex-1 min-w-0' style={{ gap: BLOCK_GAP }}>
+      {/* Blocks keep their size; the count adapts to the width (unless
+          `blockCount` is fixed, in which case they spread evenly). */}
+      <div
+        className='flex flex-1 min-w-0'
+        style={{
+          gap: BLOCK_GAP,
+          justifyContent:
+            blockCountProp !== undefined ? 'space-between' : 'flex-start',
+        }}
+      >
         {blocks.map(index => {
           const isActive = index <= activeBlockIndex;
           const position =
@@ -176,8 +185,6 @@ export const InputMeter: React.FC<InputMeterProps> = ({
               style={{
                 width: BLOCK_SIZE,
                 height: BLOCK_SIZE,
-                minWidth: BLOCK_SIZE,
-                flex: 1,
                 backgroundColor: color,
                 flexShrink: 0,
               }}

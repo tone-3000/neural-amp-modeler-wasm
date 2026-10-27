@@ -5,8 +5,10 @@ import basicSsl from '@vitejs/plugin-basic-ssl';
 export default defineConfig({
   // basic-ssl serves the dev app over https with a self-signed cert. Needed
   // for testing on other devices (e.g. iPhone over LAN): AudioWorklet
-  // requires a secure context, and only localhost is exempt.
-  plugins: [react(), basicSsl()],
+  // requires a secure context, and only localhost is exempt. Set
+  // `VITE_HTTP=1` to serve plain http (e.g. for browsers that reject the
+  // self-signed cert); localhost is still a secure context.
+  plugins: [react(), ...(process.env.VITE_HTTP ? [] : [basicSsl()])],
   css: {
     postcss: './postcss.config.js',
   },

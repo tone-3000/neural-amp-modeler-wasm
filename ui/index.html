@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="bg-zinc-900 text-white">
+<html lang="en" style="background: #000">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -14,14 +14,21 @@
         el.style.cssText =
           'color:#f87171;background:#18181b;padding:12px;margin:8px;white-space:pre-wrap;font-size:12px;position:relative;z-index:9999';
         el.textContent =
-          'Error: ' + e.message + '\n' + (e.filename || '') + ':' + (e.lineno || '');
+          'Error: ' +
+          e.message +
+          '\n' +
+          (e.filename || '') +
+          ':' +
+          (e.lineno || '');
         document.body.appendChild(el);
       });
       window.addEventListener('unhandledrejection', function (e) {
         var el = document.createElement('pre');
         el.style.cssText =
           'color:#fbbf24;background:#18181b;padding:12px;margin:8px;white-space:pre-wrap;font-size:12px;position:relative;z-index:9999';
-        el.textContent = 'Unhandled rejection: ' + (e.reason && (e.reason.stack || e.reason.message || e.reason));
+        el.textContent =
+          'Unhandled rejection: ' +
+          (e.reason && (e.reason.stack || e.reason.message || e.reason));
         document.body.appendChild(el);
       });
     </script>

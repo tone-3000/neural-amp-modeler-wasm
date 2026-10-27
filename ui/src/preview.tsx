@@ -1,127 +1,244 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { T3kPlayer } from './components/T3kPlayer';
-import { T3kDisabledPlayer } from './components/T3kDisabledPlayer';
-import T3kAcordianPlayer from './components/Player/AcordianPlayer';
-import T3kSlimPlayer from './components/Player/SlimPlayer';
-import { T3kPlayerProvider } from './context/T3kPlayerProvider';
-import './index.css';
 import { InfoIcon } from 'lucide-react';
-import { PREVIEW_MODE } from './types';
-import { DEFAULT_INPUTS, DEFAULT_IRS, DEFAULT_MODELS } from './constants';
+import { T3kPlayer } from './player/T3kPlayer';
+import { T3kPlayerProvider } from './context/T3kPlayerProvider';
+import { PlayerEvent } from './types';
+import { cabTone, demoTone, libraryTone, spaceTone } from './demo/tones';
+import './index.css';
 
-const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <p className='text-xs uppercase tracking-wider text-zinc-500'>{children}</p>
+/**
+ * Dev app: every cell of the layout × cardinality matrix, every status, and
+ * an event log. `npm start` serves it on :3000. The embed harness lives at
+ * /embed.html.
+ */
+
+const Section = ({
+  title,
+  note,
+  children,
+}: {
+  title: string;
+  note?: string;
+  children: React.ReactNode;
+}) => (
+  <section className='flex flex-col gap-3'>
+    <div>
+      <p className='text-xs uppercase tracking-wider text-muted'>{title}</p>
+      {note && <p className='text-xs text-muted/70'>{note}</p>}
+    </div>
+    {children}
+  </section>
 );
 
-const PreviewContent: React.FC = () => {
+/** Stand-in for a tone3000 search card so `docked` has something to dock to. */
+const FakeCard = ({ children }: { children: React.ReactNode }) => (
+  <div className='flex flex-col'>
+    <div className='border border-b-0 border-line rounded-t-t3k bg-canvas px-6 py-5 flex gap-4 items-center'>
+      <div className='w-16 h-16 rounded-lg bg-surface-2 flex-shrink-0' />
+      <div className='flex flex-col gap-1'>
+        <span className='font-semibold'>Host card title</span>
+        <span className='text-sm text-muted'>
+          Rendered by the host, not the player
+        </span>
+      </div>
+    </div>
+    {children}
+  </div>
+);
+
+const EventLog = ({ events }: { events: string[] }) => (
+  <pre className='text-[11px] leading-4 text-muted bg-surface border border-line rounded-t3k p-3 h-64 overflow-auto font-mono whitespace-pre-wrap'>
+    {events.length
+      ? events.join('\n')
+      : 'Events from every player appear here.'}
+  </pre>
+);
+
+const Preview: React.FC = () => {
+  const [events, setEvents] = useState<string[]>([]);
+  const log = useCallback(
+    (name: string) => (e: PlayerEvent) => {
+      if (e.type === 'resize') return; // noisy; see the embed harness
+      const { type, ...rest } = e;
+      setEvents(prev =>
+        [
+          `${name} › ${type} ${JSON.stringify(rest, (_k, v) => (v?.url ? v.name : v))}`,
+          ...prev,
+        ].slice(0, 200)
+      );
+    },
+    []
+  );
+
   return (
-    <div className='neural-amp-modeler' style={{ minHeight: '100vh' }}>
-      <div className='p-5 flex justify-center items-center'>
-        <div className='flex flex-col gap-6 max-w-[700px] w-full'>
-          <SectionLabel>SlimPlayer — baseline</SectionLabel>
-          <div className='flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800'>
-            {/* Deliberately different model/DI from the T3kPlayer defaults so
-                cross-player switching is audibly verifiable (e.g. on-device
-                testing without devtools). */}
-            <T3kSlimPlayer
-              id='slim-player-1'
-              getData={async () => ({
-                model: DEFAULT_MODELS[5],
-                ir: DEFAULT_IRS[1],
-                input: DEFAULT_INPUTS[4],
-              })}
-              onPlayDemo={({ model, input, ir }) =>
-                console.log('slim play', { model, input, ir })
-              }
-            />
-            <span className='text-sm text-zinc-400'>
-              {DEFAULT_MODELS[5].name} - {DEFAULT_INPUTS[4].name} -{' '}
-              {DEFAULT_IRS[1].name}
-            </span>
+    <div className='neural-amp-modeler min-h-screen'>
+      <div className='p-5 flex justify-center'>
+        <div className='grid gap-10 w-full max-w-[1100px] lg:grid-cols-[1fr_320px]'>
+          <div className='flex flex-col gap-10 min-w-0'>
+            <Section
+              title='single · mini'
+              note='Carousel / list cells. Title is the aria-label.'
+            >
+              <div className='flex items-center gap-3 p-3 rounded-t3k bg-surface border border-line'>
+                <T3kPlayer
+                  tones={[demoTone(5, { lazy: true })]}
+                  layout='mini'
+                  onEvent={log('mini')}
+                />
+                <span className='text-sm text-muted'>
+                  Boosted EVH 5153 · lazy assets
+                </span>
+                <T3kPlayer
+                  tones={[demoTone(1)]}
+                  layout='mini'
+                  disabled
+                  onEvent={log('mini-disabled')}
+                />
+                <span className='text-sm text-muted'>disabled</span>
+              </div>
+            </Section>
+
+            <Section
+              title='single · compact · docked'
+              note='tone3000 search card. Full player minus the header; controls behind the chevron. Lazy assets.'
+            >
+              <FakeCard>
+                <T3kPlayer
+                  tones={[demoTone(2, { lazy: true })]}
+                  layout='compact'
+                  docked
+                  linkTarget='_self'
+                  headerSlot={
+                    <InfoIcon size={20} className='text-muted flex-shrink-0' />
+                  }
+                  onEvent={log('compact')}
+                />
+              </FakeCard>
+            </Section>
+
+            <Section
+              title='single · full'
+              note='Tone page / share embed. Header from `meta`.'
+            >
+              <T3kPlayer
+                tones={[demoTone(0)]}
+                layout='full'
+                onEvent={log('full')}
+              />
+            </Section>
+
+            <Section
+              title='single · full · library'
+              note='The whole model list in one tone (v2 default player).'
+            >
+              <T3kPlayer
+                tones={[libraryTone]}
+                layout='full'
+                onEvent={log('library')}
+              />
+            </Section>
+
+            <Section
+              title='playlist · full · live=false'
+              note='Partner embed. The pager picks the tone; the bar + controls follow the active one. Third tone is lazy and fails.'
+            >
+              <T3kPlayer
+                tones={[
+                  demoTone(0),
+                  demoTone(3, { lazy: true }),
+                  demoTone(6, { lazy: true, fail: true }),
+                  demoTone(4),
+                  demoTone(1, { lazy: true, delayMs: 1500 }),
+                ]}
+                layout='full'
+                live={false}
+                onEvent={log('playlist')}
+              />
+            </Section>
+
+            <Section
+              title='playlist · compact · light'
+              note='Dense header for the pager. theme="light" is the second token sheet.'
+            >
+              <div
+                className='p-5 rounded-t3k'
+                style={{ background: '#f4f4f4' }}
+              >
+                <T3kPlayer
+                  tones={[demoTone(2), demoTone(5)]}
+                  layout='compact'
+                  defaultToneId='demo-5'
+                  theme='light'
+                  onEvent={log('playlist-compact')}
+                />
+              </div>
+            </Section>
+
+            <Section title='single · full · light'>
+              <div
+                className='p-5 rounded-t3k'
+                style={{ background: '#f4f4f4' }}
+              >
+                <T3kPlayer
+                  tones={[demoTone(4)]}
+                  layout='full'
+                  theme='light'
+                  onEvent={log('full-light')}
+                />
+              </div>
+            </Section>
+
+            <Section
+              title='gear matrix · compact'
+              note='A space IR pack (mix knob beside the toggle, amp in front) and a cab capture (amp ahead of the model via preModels).'
+            >
+              <T3kPlayer
+                tones={[spaceTone, cabTone]}
+                layout='compact'
+                onEvent={log('matrix')}
+              />
+            </Section>
+
+            <Section title='statuses'>
+              <div className='flex flex-col gap-4'>
+                <T3kPlayer tones={[demoTone(0)]} layout='full' isLoading />
+                <T3kPlayer
+                  tones={[demoTone(0)]}
+                  layout='compact'
+                  disabled={{ reason: 'This tone has no A2 models yet.' }}
+                />
+                <T3kPlayer
+                  tones={[demoTone(0, { meta: false })]}
+                  layout='full'
+                  attribution={false}
+                  live={false}
+                />
+              </div>
+            </Section>
           </div>
 
-          <SectionLabel>SlimPlayer — disabled prop</SectionLabel>
-          <div className='flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800'>
-            <T3kSlimPlayer
-              id='slim-player-disabled'
-              disabled
-              getData={async () => ({
-                model: DEFAULT_MODELS[0],
-                ir: DEFAULT_IRS[1],
-                input: DEFAULT_INPUTS[0],
-              })}
-            />
-            <span className='text-sm text-zinc-400'>Forced disabled</span>
-          </div>
-
-          <SectionLabel>T3kPlayer — baseline</SectionLabel>
-          <T3kPlayer
-            id='player-baseline'
-            isLoading={false}
-            previewMode={PREVIEW_MODE.MODEL}
-            models={DEFAULT_MODELS}
-            onPlayDemo={({ model, input, ir }) =>
-              console.log('play', { model, input, ir })
-            }
-          />
-
-          <SectionLabel>T3kPlayer — disabled prop</SectionLabel>
-          <T3kPlayer
-            id='player-forced-disabled'
-            disabled
-            models={DEFAULT_MODELS}
-            infoSlot={<InfoIcon size={20} className='text-zinc-400' />}
-          />
-
-          <SectionLabel>T3kDisabledPlayer — standalone export</SectionLabel>
-          <T3kDisabledPlayer
-            infoSlot={<InfoIcon size={20} className='text-zinc-400' />}
-          />
-
-          <SectionLabel>AcordianPlayer — baseline</SectionLabel>
-          <T3kAcordianPlayer
-            id='acordian-baseline'
-            previewMode={PREVIEW_MODE.MODEL}
-            getData={async () => ({
-              models: DEFAULT_MODELS,
-              irs: DEFAULT_IRS,
-              inputs: DEFAULT_INPUTS,
-            })}
-          />
-
-          <SectionLabel>AcordianPlayer — disabled prop</SectionLabel>
-          <T3kAcordianPlayer
-            id='acordian-forced-disabled'
-            disabled
-            previewMode={PREVIEW_MODE.MODEL}
-            getData={async () => ({
-              models: DEFAULT_MODELS,
-              irs: DEFAULT_IRS,
-              inputs: DEFAULT_INPUTS,
-            })}
-          />
+          <aside className='flex flex-col gap-3 lg:sticky lg:top-5 self-start'>
+            <p className='text-xs uppercase tracking-wider text-muted'>
+              onEvent
+            </p>
+            <EventLog events={events} />
+            <a className='text-sm text-muted underline' href='/embed.html'>
+              Embed harness →
+            </a>
+          </aside>
         </div>
       </div>
     </div>
   );
 };
 
-const Preview: React.FC = () => {
-  return (
-    // The dev app serves the built engine assets from public/engine
-    // (copied by `npm start`); library consumers get bundler-resolved
-    // defaults and don't need this prop.
-    <T3kPlayerProvider engineAssets={{ assetBaseUrl: '/engine/' }}>
-      <PreviewContent />
-    </T3kPlayerProvider>
-  );
-};
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Preview />
+    {/* The dev app serves the built engine assets from public/engine (copied
+        by `npm start`); library consumers get bundler-resolved defaults. */}
+    <T3kPlayerProvider engineAssets={{ assetBaseUrl: '/engine/' }}>
+      <Preview />
+    </T3kPlayerProvider>
   </React.StrictMode>
 );
-
-export default Preview;

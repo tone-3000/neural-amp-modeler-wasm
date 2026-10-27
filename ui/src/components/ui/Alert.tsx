@@ -1,62 +1,35 @@
 import React from 'react';
-import { AlertCircle, AlertTriangle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Info } from 'lucide-react';
 
 type AlertVariant = 'error' | 'warning' | 'info';
 
 interface AlertProps {
   variant: AlertVariant;
   children: React.ReactNode;
-  description?: React.ReactNode;
+  className?: string;
 }
 
-const variantStyles: Record<
-  AlertVariant,
+const variantStyles: Record<AlertVariant, { text: string; Icon: typeof Info }> =
   {
-    container: string;
-    icon: string;
-    title: string;
-    description: string;
-  }
-> = {
-  error: {
-    container: '',
-    icon: 'text-[#F00]',
-    title: 'text-[#F00]',
-    description: 'text-[#F00]',
-  },
-  warning: {
-    container: '',
-    icon: 'text-[#F00]',
-    title: 'text-[#F00]',
-    description: 'text-[#F00]',
-  },
-  info: {
-    container: '',
-    icon: 'text-zinc-400',
-    title: 'text-zinc-400',
-    description: 'text-zinc-400',
-  },
-};
+    error: { text: 'text-danger', Icon: AlertTriangle },
+    warning: { text: 'text-warning', Icon: AlertCircle },
+    info: { text: 'text-muted', Icon: Info },
+  };
 
-const AlertIcon: React.FC<{ variant: AlertVariant; className?: string }> = ({
+/** One-line status message with a leading icon. Colors come from the tokens. */
+export const Alert: React.FC<AlertProps> = ({
   variant,
-  className,
+  children,
+  className = '',
 }) => {
-  if (variant === 'warning') {
-    return <AlertCircle size={20} className={className} />;
-  }
-  return <AlertTriangle size={20} className={className} />;
-};
-
-export const Alert: React.FC<AlertProps> = ({ variant, children }) => {
-  const styles = variantStyles[variant];
-
+  const { text, Icon } = variantStyles[variant];
   return (
-    <div className={`flex items-start gap-3 ${styles.container}`}>
-      <AlertIcon variant={variant} className={`${styles.icon} flex-shrink-0`} />
-      <div className={`flex flex-col gap-1 text-sm ${styles.title}`}>
-        {children}
-      </div>
+    <div
+      role={variant === 'error' ? 'alert' : 'status'}
+      className={`flex items-start gap-2 text-sm ${text} ${className}`}
+    >
+      <Icon size={18} className='flex-shrink-0 mt-0.5' aria-hidden='true' />
+      <div className='flex flex-col gap-1 min-w-0'>{children}</div>
     </div>
   );
 };

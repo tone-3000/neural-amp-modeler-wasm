@@ -12,11 +12,9 @@ import { mapDevices } from '../utils/devices';
 type LiveInputUnavailableReason = 'device-disconnected' | 'permission-revoked';
 
 interface UseAudioDevicesAndPermissionsParams {
-  /** Callback to apply audio routing when output device changes. */
+  /** Apply output routing when the output device changes. */
   applyOutputRouting: (deviceId: string | null) => Promise<void>;
-  /** Callback to tear down live input audio nodes and restore demo path. */
-  teardownLiveInput: () => void;
-  /** Callback to reset audio state when live input is lost (mode, playback, config). */
+  /** Live input was lost (device unplugged, permission revoked): tear it down. */
   onLiveInputLost: () => void;
   /** Current live input config from audio state (for disconnect detection). */
   liveInputConfig: LiveInputConfig | null;
@@ -44,7 +42,6 @@ interface UseAudioDevicesAndPermissionsReturn {
  */
 export function useAudioDevicesAndPermissions({
   applyOutputRouting,
-  teardownLiveInput,
   onLiveInputLost,
   liveInputConfig,
 }: UseAudioDevicesAndPermissionsParams): UseAudioDevicesAndPermissionsReturn {
@@ -342,7 +339,6 @@ export function useAudioDevicesAndPermissions({
 
   const handleLiveInputUnavailable = useCallback(
     (reason: LiveInputUnavailableReason): void => {
-      teardownLiveInput();
       onLiveInputLost();
 
       const errorMessages: Record<LiveInputUnavailableReason, string> = {
@@ -352,7 +348,7 @@ export function useAudioDevicesAndPermissions({
       };
       setAudioInputDevices(prev => ({ ...prev, error: errorMessages[reason] }));
     },
-    [teardownLiveInput, onLiveInputLost]
+    [onLiveInputLost]
   );
 
   // Hot-plug detection

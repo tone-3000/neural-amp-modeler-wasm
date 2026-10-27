@@ -44,3 +44,5 @@ pnpm-debug.log*
 
 # Engine assets copied into the dev app by `npm start`
 public/engine
+
+public/embed.js

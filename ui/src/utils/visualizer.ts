@@ -20,10 +20,35 @@ const rafIter = () => {
   };
 };
 
+/**
+ * The waveform background is the player's surface token, read from the canvas
+ * so the visualizer follows the active theme without being told about it.
+ */
+const resolveBackground = (canvas: HTMLCanvasElement): string => {
+  const value = getComputedStyle(canvas).getPropertyValue('--t3k-surface');
+  return value.trim() || '#18181b';
+};
+
+const makeGradient = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  useGradient: boolean
+): CanvasGradient => {
+  const gradient = ctx.createLinearGradient(0, 0, width, 0);
+  if (useGradient) {
+    gradient.addColorStop(0, 'red');
+    gradient.addColorStop(0.5, 'yellow');
+    gradient.addColorStop(1, 'blue');
+  } else {
+    gradient.addColorStop(0, 'white');
+    gradient.addColorStop(1, 'white');
+  }
+  return gradient;
+};
+
 export const setupVisualizer = (
   canvas: HTMLCanvasElement,
   audioCtx: AudioContext,
-  bg = '#18181b',
   useGradient = true
 ): { analyser: AnalyserNode; stop: () => void } => {
   const canvasCtx = canvas.getContext('2d');
@@ -34,23 +59,14 @@ export const setupVisualizer = (
   const analyzer = audioCtx.createAnalyser();
   analyzer.fftSize = FFT_SIZE;
   const analyzeResultArray = new Uint8Array(analyzer.fftSize);
+  const bg = resolveBackground(canvas);
 
   let running = true;
 
   (async () => {
     const { height, width } = canvas;
     const gap = width / analyzeResultArray.length;
-
-    // Create linear gradient
-    const gradient = canvasCtx.createLinearGradient(0, 0, width, 0);
-    if (useGradient) {
-      gradient.addColorStop(0, 'red');
-      gradient.addColorStop(0.5, 'yellow');
-      gradient.addColorStop(1, 'blue');
-    } else {
-      gradient.addColorStop(0, 'white');
-      gradient.addColorStop(1, 'white');
-    }
+    const gradient = makeGradient(canvasCtx, width, useGradient);
 
     for await (const _ of rafIter()) {
       if (!running) break;
@@ -91,11 +107,9 @@ export const setupVisualizer = (
 
 export const initVisualizer = ({
   canvas,
-  bg = '#18181b',
   useGradient = true,
 }: {
   canvas: HTMLCanvasElement | null;
-  bg?: string;
   useGradient?: boolean;
 }) => {
   if (!canvas) return;
@@ -105,16 +119,8 @@ export const initVisualizer = ({
     throw new Error('canvasCtx was null');
   }
   const { height, width } = canvas;
-  const gradient = canvasCtx.createLinearGradient(0, 0, width, 0);
-  if (useGradient) {
-    gradient.addColorStop(0, 'red');
-    gradient.addColorStop(0.5, 'yellow');
-    gradient.addColorStop(1, 'blue');
-  } else {
-    gradient.addColorStop(0, 'white');
-    gradient.addColorStop(1, 'white');
-  }
-  canvasCtx.fillStyle = bg;
+  const gradient = makeGradient(canvasCtx, width, useGradient);
+  canvasCtx.fillStyle = resolveBackground(canvas);
   canvasCtx.lineWidth = 2;
   canvasCtx.fillRect(0, 0, width, height);
   canvasCtx.beginPath();

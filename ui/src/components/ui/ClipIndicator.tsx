@@ -48,9 +48,9 @@ export const ClipIndicator = forwardRef<HTMLButtonElement, ClipIndicatorProps>(
         onClick={onClick}
         className={`
           rounded-sm
-          bg-zinc-700
+          bg-line
           focus:outline-none
-          [&.clipped]:bg-[#f00]
+          [&.clipped]:bg-danger
           ${className}
           ${inactive ? 'grayscale cursor-not-allowed' : 'cursor-pointer'}
         `}

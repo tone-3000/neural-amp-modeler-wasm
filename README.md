@@ -4,6 +4,8 @@
 
 This is a [TONE3000](https://tone3000.com) WebAssembly port of [Steve Atkinson's Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore) DSP library, enabling real-time audio amp modeling directly in the browser without native plugins. The core library is consumed unmodified as a git submodule pinned to its latest release (`v0.5.4`); this repo contains only the wasm engine and the UI package.
 
+The `neural-amp-modeler-wasm` npm package ships the engine, a React player (`T3kPlayer`: mini / compact / full layouts, playlists, sample playback and live input through an audio interface) and an iframe embed bridge, so a tone can be played on tone3000.com, inside a share embed, or on a partner's product page from one code path.
+
 ![screenshot](https://raw.githubusercontent.com/tone-3000/neural-amp-modeler-wasm/refs/heads/main/ui/public/screenshot.png)
 
 ## Architecture
@@ -31,8 +33,9 @@ Repo layout:
 
 - `core/` — [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) submodule, pinned to `v0.5.4` (A2 + slimmable models); brings its own Eigen/nlohmann/AudioDSPTools dependencies
 - `wasm/` — the C API and Emscripten build for the engine
-- `ui/` — the npm package: engine JS layer + React players + demo app
-- `tools/` — Node smoke tests
+- `ui/` — the npm package: engine JS layer + React player + embed bridge + demo app
+- `ui/public/` — bundled demo library: NAM A2 [models](./ui/public/models/README.md), [IRs](./ui/public/irs/README.md) and DI [inputs](./ui/public/inputs/README.md), served from GitHub by the published package's `DEFAULT_*` lists
+- `tools/smoke/` — Node smoke test for the engine
 
 ## Building
 
@@ -68,6 +71,12 @@ npm start        # builds the package, then serves the demo app on :3000
 npm run build    # production build of the npm package into dist/
 ```
 
+The dev server serves three pages: `/` (every layout and state of the player
+side by side), `/frame.html` (the reference iframe page a site would host,
+`?tones=0,3&layout=compact&live=0`) and `/embed.html` (a mock partner product
+page that embeds several frames through `embed.js` and logs the `t3k:*` events
+it receives).
+
 ## Testing
 
 - **Node smoke test** (no browser; exercises the C API through the glue):
@@ -79,8 +88,28 @@ npm run build    # production build of the npm package into dist/
   Covers instance lifecycle, A1/A2 model loads, slimmable sizing, audio
   processing sanity, error handling, and heap stability across model switches.
 
+- **Typecheck and formatting:**
+
+  ```bash
+  cd ui && npm run typecheck && npm run format:check
+  ```
+
 Upstream's native tools, tests, and benchmarks live in the `core/` submodule;
 build them there with core's own CMake project if needed.
+
+## Publishing the npm package
+
+```bash
+cd ui
+npm version <major|minor|patch>   # bumps ui/package.json, tags the commit
+npm publish                       # prepublishOnly: format check, typecheck, smoke test
+```
+
+`npm publish` runs `prepare` (clean + build) before packing, so `dist/` is
+always rebuilt from source. The tarball contains `dist/`, `README.md`,
+`CHANGELOG.md` and `LICENSE` only; the demo library under `ui/public/` is not
+published — the package's `DEFAULT_*` lists point at it on GitHub. Use
+`npm pack --dry-run` to inspect the file list first.
 
 ## Bumping the core version
 
@@ -100,25 +129,48 @@ a stale patch number.
 ## Using the React component
 
 See the [package README](./ui/README.md) for full documentation of the
-`T3kPlayer` React components and the standalone
-`neural-amp-modeler-wasm/engine` API.
+`T3kPlayer` React component (tones, layouts, events, theming), the iframe
+embed bridge, and the standalone `neural-amp-modeler-wasm/engine` API.
 
 ```tsx
-import { T3kPlayer, T3kPlayerProvider } from 'neural-amp-modeler-wasm';
-import 'neural-amp-modeler-wasm/dist/styles.css';
+import { NO_IR, T3kPlayer, T3kPlayerProvider } from "neural-amp-modeler-wasm";
+import "neural-amp-modeler-wasm/styles.css";
 
 function App() {
   return (
     <T3kPlayerProvider>
       <T3kPlayer
-        models={[{ name: 'Vox AC10', url: '/models/ac10.nam', default: true }]}
-        irs={[{ name: 'Celestion', url: '/irs/celestion.wav', default: true }]}
-        inputs={[{ name: 'Guitar', url: '/inputs/guitar.wav', default: true }]}
+        layout="full"
+        tones={[
+          {
+            id: "ac10",
+            meta: { title: "Vox AC10", subtitle: "Amp Capture", format: "nam" },
+            assets: {
+              models: [{ name: "Vox AC10", url: "/models/ac10.nam" }],
+              irs: [
+                NO_IR,
+                { name: "Celestion", url: "/irs/celestion.wav", default: true },
+              ],
+              inputs: [{ name: "Guitar", url: "/inputs/guitar.wav" }],
+            },
+          },
+        ]}
+        onEvent={(event) => console.log(event)}
       />
     </T3kPlayerProvider>
   );
 }
 ```
+
+### Embedding on another site
+
+The same player runs inside a cross-origin `<iframe>`. The frame hands
+`useEmbedBridge().onEvent` to the player; the host page marks its iframes with
+`data-t3k-player` and includes the dependency-free `embed.js` host script
+(`neural-amp-modeler-wasm/embed.js`), which sizes the frames and re-dispatches
+player events as `t3k:*` CustomEvents. Live input works in an embed when the
+host's iframe carries `allow="autoplay; microphone"`. See
+[Embedding in an iframe](./ui/README.md#embedding-in-an-iframe).
 
 ## Credits
 

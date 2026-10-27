@@ -15,6 +15,14 @@ module.exports = () => {
         return;
       }
 
+      // Only the component stylesheet gets scoped. Vite also runs PostCSS
+      // over inline <style> blocks in the dev HTML pages (embed.html,
+      // frame.html); those style the host page, not the player.
+      const file = (rule.source && rule.source.input.file) || '';
+      if (/\.html(\?|$)|html-proxy/.test(file)) {
+        return;
+      }
+
       // Get the selector
       const selector = rule.selector;
 
@@ -30,10 +38,17 @@ module.exports = () => {
         '::after',
       ];
 
-      // Check if selector should be skipped
+      // Check if selector should be skipped. Anything that already starts with
+      // the root class (including `.neural-amp-modeler[data-theme=…]` and
+      // comma lists of root variants) is left alone.
       const shouldSkip = skipSelectors.some(skip => {
         if (skip.includes('*')) {
           return selector.includes('*');
+        }
+        if (skip === '.neural-amp-modeler') {
+          return selector
+            .split(',')
+            .every(s => s.trim().startsWith('.neural-amp-modeler'));
         }
         return selector === skip || selector.startsWith(skip + ' ');
       });

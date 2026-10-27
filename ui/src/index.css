@@ -4,18 +4,72 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+ * Design tokens
+ *
+ * Every color, radius and font in the player resolves through one of these
+ * variables (via the Tailwind theme in tailwind.config.js), so a theme is a
+ * token sheet, not a code change. Both sheets share one geometry; only the
+ * palette differs. The package does not load fonts: hosts that ship Figtree /
+ * JetBrains Mono get them, everyone else gets the system stack.
+ * ------------------------------------------------------------------------- */
+.neural-amp-modeler {
+  --t3k-font:
+    Figtree, -apple-system, system-ui, BlinkMacSystemFont, 'Helvetica Neue',
+    Helvetica, Arial, sans-serif;
+  --t3k-font-mono:
+    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --t3k-radius: 12px;
+  --t3k-radius-sm: 8px;
+  /* The on/off switch keeps the dark-theme colors in every theme. */
+  --t3k-toggle-on: #00d13b;
+  --t3k-toggle-off: #71717a;
+  --t3k-toggle-knob: #ffffff;
+}
+
+.neural-amp-modeler,
+.neural-amp-modeler[data-theme='dark'] {
+  --t3k-canvas: #000000;
+  --t3k-surface: #18181b;
+  --t3k-surface-2: #27272a;
+  --t3k-line: #3f3f46;
+  --t3k-line-strong: #71717a;
+  --t3k-fg: #ffffff;
+  --t3k-muted: #a1a1aa;
+  --t3k-muted-2: #d4d4d8;
+  --t3k-accent: #ffffff;
+  --t3k-on-accent: #000000;
+  --t3k-link: #6b9bff;
+  --t3k-success: #00d13b;
+  --t3k-danger: #ff3b3b;
+  --t3k-warning: #f0b429;
+  color-scheme: dark;
+}
+
+.neural-amp-modeler[data-theme='light'] {
+  --t3k-canvas: #ffffff;
+  --t3k-surface: #ffffff;
+  --t3k-surface-2: #efefef;
+  --t3k-line: #e3e3e3;
+  --t3k-line-strong: #c9c9c9;
+  --t3k-fg: #1a1a1a;
+  --t3k-muted: #666666;
+  --t3k-muted-2: #444444;
+  --t3k-accent: #1a1a1a;
+  --t3k-on-accent: #ffffff;
+  --t3k-link: #1d5fd1;
+  --t3k-success: #0a7d3b;
+  --t3k-danger: #c8102e;
+  --t3k-warning: #b97f00;
+  color-scheme: light;
+}
+
 /* Custom component wrapper class */
 .neural-amp-modeler {
-  font-family:
-    Arial,
-    -apple-system,
-    system-ui,
-    BlinkMacSystemFont,
-    Helvetica Neue,
-    Helvetica,
-    sans-serif;
+  font-family: var(--t3k-font);
   line-height: 1.5;
-  background-color: black;
+  color: var(--t3k-fg);
+  background-color: var(--t3k-canvas);
   text-rendering: optimizeLegibility;
   --tw-bg-opacity: 1;
   --tw-text-opacity: 1;
@@ -26,6 +80,73 @@
 .neural-amp-modeler * {
   /* This ensures all Tailwind utilities are scoped to the component */
   box-sizing: border-box;
+}
+
+/* Native <select>: strip the UA chrome, keep the OS popup (which renders
+ * outside any iframe bounds). The chevron is drawn by NativeSelect. */
+.t3k-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: transparent;
+}
+.t3k-select option {
+  background-color: var(--t3k-surface);
+  color: var(--t3k-fg);
+}
+
+/* Source tabs + attribution share one row. Below ~380px (a 320px embed, a
+ * narrow card) "Powered by" + logo + both tabs don't fit, so the words go
+ * screen-reader-only and the logo carries the link. Container query so it
+ * follows the player's width, not the viewport (content box, see below). */
+.t3k-tabbar {
+  container-type: inline-size;
+}
+@container (max-width: 347px) {
+  .t3k-powered-text {
+    @apply sr-only;
+  }
+}
+
+/* Controls body. The "Input: … · Cab: …" line is one row that truncates, or
+ * two stacked rows under ~380px. Keyed to the body's width (not the option
+ * text) so the skeleton and the real controls are always the same height. */
+.t3k-body {
+  container-type: inline-size;
+}
+@container (max-width: 347px) {
+  .t3k-inline-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Tone header + pager. Under ~480px the title has no room next to ‹ n/N ›,
+ * so the pager drops to its own row. (Container queries measure the
+ * content box, so these thresholds are the row's width minus its padding.) */
+.t3k-header {
+  container-type: inline-size;
+  row-gap: 0.75rem;
+}
+@container (max-width: 447px) {
+  .t3k-header-pager {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* Skeleton shimmer for the loading state. */
+@keyframes t3k-shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.t3k-skeleton {
+  background-color: var(--t3k-surface-2);
+  animation: t3k-shimmer 1.4s ease-in-out infinite;
 }
 
 @keyframes monitor-pop {

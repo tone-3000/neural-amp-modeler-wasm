@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { KnobHeadless } from 'react-knob-headless';
 import { KnobInner } from './KnobInner';
 
@@ -9,8 +9,18 @@ interface KnobControlProps {
   size?: number;
   labelSize?: number;
   labelBottom?: boolean;
+  /** Keep the label for assistive tech only. */
+  hideLabel?: boolean;
   isDisabled?: boolean;
+  /**
+   * Formatted value (`+2.0 dB`, `50%`) shown in a tip above the knob while
+   * it's being dragged, and briefly after a wheel/keyboard change.
+   */
+  tip?: string;
 }
+
+/** How long the tip lingers after a non-drag change. */
+const TIP_LINGER_MS = 900;
 
 export const KnobControl: React.FC<KnobControlProps> = ({
   label,
@@ -19,10 +29,30 @@ export const KnobControl: React.FC<KnobControlProps> = ({
   size = 64,
   labelSize = 14,
   labelBottom = true,
+  hideLabel = false,
   isDisabled = false,
+  tip,
 }) => {
   // const angleDeg = value * 270 - 135; // -135..+135
   const knobRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [nudged, setNudged] = useState(false);
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout>>();
+  const firstRender = useRef(true);
+
+  // A value change that isn't part of a drag (wheel, keys) flashes the tip.
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    if (dragging || !tip) return;
+    setNudged(true);
+    clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = setTimeout(() => setNudged(false), TIP_LINGER_MS);
+    return () => clearTimeout(nudgeTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   useEffect(() => {
     const knobElement = knobRef.current;
@@ -34,6 +64,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     };
 
     const handleMouseDown = () => {
+      setDragging(true);
       // Prevent text selection during drag
       const bodyStyle = document.body.style as any;
       bodyStyle.userSelect = 'none';
@@ -46,6 +77,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     };
 
     const handleMouseUp = () => {
+      setDragging(false);
       // Restore text selection
       const bodyStyle = document.body.style as any;
       bodyStyle.userSelect = '';
@@ -60,15 +92,17 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     // Add event listeners
     knobElement.addEventListener('selectstart', preventSelection);
     knobElement.addEventListener('dragstart', preventSelection);
-    knobElement.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mouseup', handleMouseUp);
+    knobElement.addEventListener('pointerdown', handleMouseDown);
+    document.addEventListener('pointerup', handleMouseUp);
+    document.addEventListener('pointercancel', handleMouseUp);
 
     return () => {
       // Cleanup
       knobElement.removeEventListener('selectstart', preventSelection);
       knobElement.removeEventListener('dragstart', preventSelection);
-      knobElement.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mouseup', handleMouseUp);
+      knobElement.removeEventListener('pointerdown', handleMouseDown);
+      document.removeEventListener('pointerup', handleMouseUp);
+      document.removeEventListener('pointercancel', handleMouseUp);
 
       // Ensure body styles are reset
       const bodyStyle = document.body.style as any;
@@ -87,7 +121,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
         flexDirection: labelBottom ? 'column' : 'column-reverse',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: labelSize === 14 ? '14px' : '10px',
+        gap: hideLabel ? 0 : labelSize === 14 ? '14px' : '10px',
       }}
     >
       <KnobHeadless
@@ -115,18 +149,28 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       >
         {/* New gradient knob design */}
         <KnobInner value={value} size={size} />
+        {tip && (dragging || nudged) && (
+          <span
+            role='status'
+            className='pointer-events-none absolute left-1/2 bottom-full mb-1.5 -translate-x-1/2 z-10 whitespace-nowrap rounded bg-surface border border-line px-1.5 py-0.5 font-mono text-xs text-fg tabular-nums shadow'
+          >
+            {tip}
+          </span>
+        )}
       </KnobHeadless>
 
-      <span
-        style={{
-          fontSize: labelSize,
-          fontWeight: 400,
-          textAlign: 'center',
-          color: '#ffffff',
-        }}
-      >
-        {label}
-      </span>
+      {!hideLabel && (
+        <span
+          style={{
+            fontSize: labelSize,
+            fontWeight: 400,
+            textAlign: 'center',
+            color: 'var(--t3k-fg)',
+          }}
+        >
+          {label}
+        </span>
+      )}
     </div>
   );
 };

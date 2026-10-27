@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>T3K embed harness (host page)</title>
+    <style>
+      /* Deliberately NOT the player's stylesheet: this is a third-party page. */
+      body {
+        margin: 0;
+        padding: 32px 20px;
+        font:
+          15px/1.5 Georgia,
+          serif;
+        background: white;
+        color: #222;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0 0 4px;
+      }
+      p.lede {
+        color: #666;
+        margin: 0 0 28px;
+      }
+      h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #888;
+        margin: 36px 0 8px;
+      }
+      iframe {
+        display: block;
+        width: 100%;
+        border: 0;
+        /* Height is owned by embed.js; this is the pre-handshake fallback. */
+        height: 120px;
+        transition: height 160ms ease;
+      }
+      /* Frame width under test; picked by the ?w= switcher below. */
+      main[data-w='320'] iframe {
+        width: 320px;
+      }
+      main[data-w='420'] iframe {
+        width: 420px;
+      }
+      nav.widths {
+        display: flex;
+        gap: 6px;
+        margin: 0 0 28px;
+        font-size: 13px;
+      }
+      nav.widths a {
+        padding: 4px 10px;
+        border: 1px solid #ccc;
+        border-radius: 999px;
+        color: #444;
+        text-decoration: none;
+      }
+      nav.widths a[aria-current] {
+        background: #222;
+        border-color: #222;
+        color: #fff;
+      }
+      pre {
+        font:
+          12px/1.4 ui-monospace,
+          monospace;
+        background: #fff;
+        border: 1px solid #ddd;
+        padding: 12px;
+        height: 180px;
+        overflow: auto;
+        margin: 0;
+      }
+      code {
+        font-size: 13px;
+        background: #eee;
+        padding: 1px 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Partner product page</h1>
+      <p class="lede">
+        Everything below the headings is a cross-document
+        <code>&lt;iframe&gt;</code>. The host only loads <code>/embed.js</code>,
+        which sizes the frames and re-dispatches player events as
+        <code>t3k:*</code> CustomEvents.
+      </p>
+
+      <nav class="widths" aria-label="Frame width">
+        <a href="?w=320">320px (smallest)</a>
+        <a href="?w=420">420px</a>
+        <a href="?w=100">100% (responsive)</a>
+      </nav>
+
+      <h2>Share embed · one tone · full</h2>
+      <iframe
+        data-t3k-player
+        src="/frame.html?tones=0&layout=full"
+        title="TONE3000 player"
+        allow="autoplay; microphone"
+        loading="lazy"
+      ></iframe>
+
+      <h2>Share embed · one tone · compact (expand grows the frame)</h2>
+      <iframe
+        data-t3k-player
+        src="/frame.html?tones=2&layout=compact"
+        title="TONE3000 player"
+        allow="autoplay; microphone"
+        loading="lazy"
+      ></iframe>
+
+      <h2>Partner embed · top tones for a make/model</h2>
+      <iframe
+        data-t3k-player
+        src="/frame.html?tones=0,3,4,6,1&layout=full"
+        title="TONE3000 player — top tones"
+        allow="autoplay; microphone"
+        loading="lazy"
+      ></iframe>
+
+      <h2>
+        Host forgot <code>microphone</code> in <code>allow</code> (embed.js
+        warns in the console; the live tab explains)
+      </h2>
+      <iframe
+        data-t3k-player
+        src="/frame.html?tones=3&layout=full"
+        title="TONE3000 player — no mic"
+        allow="autoplay"
+        loading="lazy"
+      ></iframe>
+
+      <h2>Sample only · <code>live=0</code></h2>
+      <iframe
+        data-t3k-player
+        src="/frame.html?tones=4&layout=full&live=0"
+        title="TONE3000 player — sample only"
+        allow="autoplay"
+        loading="lazy"
+      ></iframe>
+
+      <h2>Injected after load (MutationObserver path)</h2>
+      <div id="late"></div>
+      <button id="inject" type="button">Inject a frame</button>
+
+      <h2>Host-side events</h2>
+      <pre id="log">Waiting for t3k:ready…</pre>
+    </main>
+
+    <!-- What tone3000.com serves at /embed.js. Copied from dist/ by `npm start`. -->
+    <script async src="/embed.js"></script>
+
+    <script>
+      // Frame width under test: ?w=320 | 420 | 100 (default 100%).
+      var w = new URLSearchParams(location.search).get('w') || '100';
+      if (w !== '320' && w !== '420') w = '100';
+      document.querySelector('main').dataset.w = w;
+      document.querySelectorAll('nav.widths a').forEach(function (a) {
+        if (a.getAttribute('href') === '?w=' + w)
+          a.setAttribute('aria-current', 'true');
+      });
+
+      var log = document.getElementById('log');
+      var lines = [];
+      // Events bubble from the iframe element.
+      [
+        'ready',
+        'resize',
+        'play',
+        'pause',
+        'ended',
+        'tone_change',
+        'selection_change',
+        'bypass_change',
+        'expand',
+        'collapse',
+        'error',
+      ].forEach(function (type) {
+        document.addEventListener('t3k:' + type, function (e) {
+          var title = e.target.getAttribute('title') || 'iframe';
+          lines.unshift(title + ' › ' + type + ' ' + JSON.stringify(e.detail));
+          log.textContent = lines.slice(0, 50).join('\n');
+        });
+      });
+
+      document.getElementById('inject').addEventListener('click', function () {
+        var f = document.createElement('iframe');
+        f.setAttribute('data-t3k-player', '');
+        f.src = '/frame.html?tones=5&layout=compact';
+        f.title = 'TONE3000 player (injected)';
+        f.allow = 'autoplay; microphone';
+        document.getElementById('late').appendChild(f);
+        this.disabled = true;
+      });
+    </script>
+  </body>
+</html>

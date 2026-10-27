@@ -15,6 +15,7 @@
  * @date: 2026-08-09
  */
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -32,8 +33,10 @@ namespace
 {
 
 // Loudness-aware models are normalized to this output level, matching the
-// behavior of the v1 engine (and the NAM plugin's "normalize" convention).
+// NAM plugin and the TONE3000 pedal: capture loudness -> target, clamped to
+// +/-12 dB. Models without (or with an implausible) loudness run at unity.
 constexpr float kLoudnessTargetDb = -18.0f;
+constexpr float kMaxNormalizeDb = 12.0f;
 
 // I smooth the output gain with a one-pole filter so a target change while
 // audio is running (e.g. on a model swap) doesn't click.
@@ -77,9 +80,13 @@ struct Instance
 
   float TargetOutputGain() const
   {
-    if (model != nullptr && model->HasLoudness())
-      return powf(10.0f, (kLoudnessTargetDb - (float)model->GetLoudness()) * 0.05f);
-    return 1.0f;
+    if (model == nullptr || !model->HasLoudness())
+      return 1.0f;
+    const float loudnessDb = (float)model->GetLoudness();
+    if (!std::isfinite(loudnessDb) || loudnessDb <= -100.0f || loudnessDb > 0.0f)
+      return 1.0f;
+    const float db = std::clamp(kLoudnessTargetDb - loudnessDb, -kMaxNormalizeDb, kMaxNormalizeDb);
+    return powf(10.0f, db * 0.05f);
   }
 };
 

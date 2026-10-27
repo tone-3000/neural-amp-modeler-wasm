@@ -1,136 +1,105 @@
 import React, {
   createContext,
-  useContext,
-  useRef,
-  useState,
-  useEffect,
   ReactNode,
   useCallback,
+  useContext,
+  useEffect,
   useMemo,
+  useRef,
+  useState,
 } from 'react';
-import { NamEngine, NamNode, NamEngineAssets } from '../engine';
-import { DEFAULT_AUDIO_SRC, DEFAULT_MODELS } from '../constants';
+import { AudioGraph } from '../audio/AudioGraph';
+import { announcePlayback, onOtherPlayback } from '../audio/playbackLock';
+import type { NamEngineAssets } from '../engine';
+import { useAudioDevicesAndPermissions } from '../hooks/useAudioDevicesAndPermissions';
 import {
-  InputMode,
   AudioInputDevice,
-  MicrophonePermissionState,
   AudioInputDeviceState,
   AudioOutputDeviceState,
-  ChannelSelection,
-  SettingsDialogState,
-  SourceMode,
-  Model,
-  IR,
-  AudioNodes,
   AudioState,
-  IrConfig,
-  EMPTY_AUDIO_NODES,
+  ChannelSelection,
+  IR,
+  MicrophonePermissionState,
 } from '../types';
-import { dbToLinear } from '../utils/metering';
-import {
-  cleanupLiveInputNodes,
-  teardownLiveInput,
-  applyOutputDeviceRouting,
-} from '../utils/audioNodes';
-import { useAudioDevicesAndPermissions } from '../hooks/useAudioDevicesAndPermissions';
 
 /**
- * Audio Initialization Flow
- * ========================
+ * One engine per provider, shared by every player beneath it.
  *
- * 1. init() creates the AudioContext and attaches the NamEngine to it
- *    (registers the worklet module and fetches the wasm binary).
- * 2. A single NamNode (an AudioWorkletNode running the NAM wasm engine) is
- *    created and wired into the audio graph alongside the gain/meter nodes.
- * 3. A model is loaded into the node (the default placeholder, or the one
- *    passed to init()); model switches later reuse the same node.
- *
- * After await init(), all audio nodes are guaranteed to exist. No
- * SharedArrayBuffer or cross-origin isolation is required.
+ * Nothing is created until `init()` runs from a user gesture: no
+ * AudioContext, no wasm fetch, no model or IR download. Players call
+ * `init()` then `sync()` with what they want to hear; the context diffs the
+ * request against the graph and only loads what changed.
  */
 
-interface T3kPlayerContextType {
-  // State
+export interface EngineSettings {
+  modelUrl: string | null;
+  /** Second NAM ahead of the model. Omit / `null` for pass-through. */
+  preModelUrl?: string | null;
+  slimSize?: number;
+  ir: IR;
+  /** Overrides `ir.mix` (and the length rule) when set. */
+  mix?: number;
+  bypassed: boolean;
+}
+
+export interface T3kPlayerContextType {
   audioState: AudioState;
-  sourceMode: SourceMode;
   microphonePermission: MicrophonePermissionState;
   audioInputDevices: AudioInputDeviceState;
   audioOutputDevices: AudioOutputDeviceState;
 
-  // Getters
-  getAudioNodes: () => AudioNodes;
-  isAudioReady: () => boolean;
+  /** The graph once `init()` has resolved. For meter and visualizer taps. */
+  getGraph: () => AudioGraph | null;
 
-  // Actions
-  init: (options?: {
-    audioUrl?: string;
-    modelUrl?: string;
-    slimSize?: number;
-  }) => Promise<void>;
-  loadModel: (modelUrl: string, slimSize?: number) => Promise<void>;
-  loadAudio: (src: string) => Promise<void>;
-  loadIr: (config: IrConfig) => Promise<void>;
-  removeIr: () => void;
+  /** Create the engine (idempotent). Call from a user gesture. */
+  init: () => Promise<AudioGraph>;
+  /** Make the engine match `settings`, loading only what differs. */
+  sync: (settings: EngineSettings) => Promise<void>;
+  loadAudio: (url: string) => Promise<void>;
   setBypass: (bypassed: boolean) => void;
-  cleanup: () => void;
-  connectVisualizerNode: (analyserNode: AnalyserNode) => () => void;
+  /** Wet/dry of the loaded IR, live. */
+  setIrMix: (mix: number) => void;
+  /** Start (claiming the engine for `playerId`) or stop. */
+  setPlaying: {
+    (playing: true, playerId: string): void;
+    (playing: false): void;
+  };
+  /** Stop and rewind. Called by a player that unmounts while it owns playback. */
+  release: () => void;
+  connectVisualizer: (analyser: AnalyserNode) => () => void;
 
-  // Engine sync
-  syncEngineSettings: (config: {
-    modelUrl: string;
-    ir: { url: string | null; mix?: number; gain?: number };
-    bypassed: boolean;
-    slimSize?: number;
-  }) => Promise<void>;
-
-  // Input mode actions
-  startLiveInput: (
-    deviceId?: string,
-    options?: {
-      initialChannel?: ChannelSelection;
-      initialChannelGains?: Record<ChannelSelection, number>;
-    }
-  ) => Promise<void>;
+  startLiveInput: (deviceId?: string) => Promise<void>;
   reconnectLiveInput: () => Promise<void>;
   stopLiveInput: () => void;
   selectLiveInputChannel: (channel: ChannelSelection) => void;
   setLiveInputGain: (gainDb: number) => void;
 
-  // Playback control
-  setPlaying: {
-    (playing: true, playerId: string): void;
-    (playing: false): void;
-  };
-  setSourceMode: (mode: SourceMode) => void;
-
-  // Microphone permission actions
-  requestMicrophonePermission: () => Promise<string | null>; // Returns preferred device ID
-
-  // Audio input device actions
+  requestMicrophonePermission: () => Promise<string | null>;
   refreshAudioInputDevices: () => Promise<{
     inputDevices: AudioInputDevice[];
     preferredDeviceId: string | null;
   }>;
-
-  // Audio output device actions
-  setOutputDevice: (deviceId: string | null) => Promise<void>;
   refreshAudioOutputDevices: () => Promise<void>;
-
-  // Settings dialog (global, single instance)
-  settingsDialog: SettingsDialogState;
-  openSettingsDialog: (config: {
-    playerId?: string;
-    selectedModel: Model;
-    selectedIr: IR;
-    onMonitoringChange: (enabled: boolean) => void | Promise<void>;
-  }) => void;
-  closeSettingsDialog: () => void;
+  setOutputDevice: (deviceId: string | null) => Promise<void>;
 }
 
-// Context
+const INITIAL_AUDIO_STATE: AudioState = {
+  initState: 'uninitialized',
+  isPlaying: false,
+  activePlayerId: null,
+  isBypassed: false,
+  modelUrl: null,
+  preModelUrl: null,
+  irUrl: null,
+  irMix: 1,
+  irReverbLike: false,
+  audioUrl: null,
+  inputMode: { type: 'demo' },
+  liveInputConfig: null,
+};
+
 const T3kPlayerContext = createContext<T3kPlayerContextType | null>(null);
 
-// Provider Component
 export function T3kPlayerContextProvider({
   children,
   engineAssets,
@@ -138,59 +107,86 @@ export function T3kPlayerContextProvider({
   children: ReactNode;
   /**
    * Where to load the engine assets (nam-worklet.js, nam-engine.wasm) from.
-   * Defaults to URLs relative to this package's module (handled automatically
-   * by bundlers that support `new URL(..., import.meta.url)`).
+   * Defaults to URLs relative to this package's module.
    */
   engineAssets?: NamEngineAssets;
 }) {
-  // Consolidated state
-  const [audioState, setAudioState] = useState<AudioState>({
-    initState: 'uninitialized',
-    isPlaying: false,
-    activePlayerId: null,
-    isBypassed: false,
-    modelUrl: null,
-    irUrl: null,
-    audioUrl: null,
-    inputMode: { type: 'demo' },
-    liveInputConfig: null,
-  });
+  const [audioState, setAudioState] = useState<AudioState>(INITIAL_AUDIO_STATE);
+  /** Last configured device, readable from callbacks without a stale closure. */
+  const liveConfigRef = useRef(audioState.liveInputConfig);
+  liveConfigRef.current = audioState.liveInputConfig;
 
-  // Global source mode (demo vs live), shared by all players
-  const [sourceMode, setSourceMode] = useState<SourceMode>('demo');
-
-  // Settings dialog state (global, single instance)
-  const [settingsDialog, setSettingsDialog] = useState<SettingsDialogState>({
-    isOpen: false,
-    sourceMode: 'demo',
-    onMonitoringChange: () => {},
-  });
-
-  // Refs for non-render-triggering data
-  const audioNodesRef = useRef<AudioNodes>({ ...EMPTY_AUDIO_NODES });
-
-  const isInitializingRef = useRef<boolean>(false);
-  const isInitializedRef = useRef<boolean>(false);
-  // The NAM worklet node (also stored in audioNodesRef.audioWorkletNode for
-  // graph wiring; this ref keeps the typed NamNode API for model loading).
-  const namNodeRef = useRef<NamNode | null>(null);
-  const engineAssetsRef = useRef<NamEngineAssets | undefined>(engineAssets);
+  const graphRef = useRef<AudioGraph | null>(null);
+  const initPromiseRef = useRef<Promise<AudioGraph> | null>(null);
+  const engineAssetsRef = useRef(engineAssets);
   engineAssetsRef.current = engineAssets;
 
-  // Getter for audio nodes
-  const getAudioNodes = useCallback((): AudioNodes => {
-    return audioNodesRef.current;
+  const getGraph = useCallback(() => graphRef.current, []);
+
+  const stopped = useCallback((): void => {
+    setAudioState(prev =>
+      prev.isPlaying || prev.activePlayerId
+        ? { ...prev, isPlaying: false, activePlayerId: null }
+        : prev
+    );
   }, []);
 
-  // Check if audio system is ready for operations
-  // Use this for conditional logic or UI state
-  const isAudioReady = useCallback((): boolean => {
-    if (!isInitializedRef.current) return false;
-    const nodes = audioNodesRef.current;
-    return !!(nodes.audioContext && nodes.audioWorkletNode);
+  // ---- Playback ------------------------------------------------------------
+
+  const setPlaying = useCallback(
+    (playing: boolean, playerId?: string): void => {
+      const graph = graphRef.current;
+      if (!graph) {
+        if (playing) console.warn('[T3kPlayer] setPlaying before init()');
+        return;
+      }
+      if (playing) {
+        announcePlayback();
+        void graph.context.resume();
+        if (!graph.live) {
+          graph.element.play().catch(error => {
+            console.error('[T3kPlayer] playback failed:', error);
+            graph.setOutputEnabled(false);
+            stopped();
+          });
+        }
+        graph.setOutputEnabled(true);
+        setAudioState(prev => ({
+          ...prev,
+          isPlaying: true,
+          activePlayerId: playerId ?? prev.activePlayerId,
+        }));
+      } else {
+        graph.setOutputEnabled(false);
+        if (!graph.live) graph.element.pause();
+        stopped();
+      }
+    },
+    [stopped]
+  ) as T3kPlayerContextType['setPlaying'];
+
+  // Another engine on the page (other provider or same-origin iframe) started.
+  useEffect(() => onOtherPlayback(() => setPlaying(false)), [setPlaying]);
+
+  const release = useCallback((): void => {
+    setPlaying(false);
+    const graph = graphRef.current;
+    if (graph) graph.element.currentTime = 0;
+  }, [setPlaying]);
+
+  // ---- Live input lifecycle hooks for the devices hook --------------------
+
+  const dropLiveInput = useCallback((): void => {
+    graphRef.current?.stopLive();
+    setAudioState(prev => ({
+      ...prev,
+      inputMode: { type: 'demo' },
+      liveInputConfig: null,
+      isPlaying: false,
+      activePlayerId: null,
+    }));
   }, []);
 
-  // Audio device management, permissions, and hot-plug detection
   const {
     microphonePermission,
     audioInputDevices,
@@ -202,1008 +198,258 @@ export function T3kPlayerContextProvider({
     handleLiveInputUnavailable,
   } = useAudioDevicesAndPermissions({
     applyOutputRouting: useCallback(async (deviceId: string | null) => {
-      const nodes = audioNodesRef.current;
-      if (!nodes.audioContext || !nodes.outputMeterNode) return;
-      await applyOutputDeviceRouting(nodes, deviceId);
+      await graphRef.current?.setSink(deviceId);
     }, []),
-    teardownLiveInput: useCallback(() => {
-      teardownLiveInput(audioNodesRef.current, { muteOutput: false });
-    }, []),
-    onLiveInputLost: useCallback(() => {
-      setAudioState(prev => ({
-        ...prev,
-        inputMode: { type: 'demo' },
-        liveInputConfig: null,
-        isPlaying: false,
-        activePlayerId: null,
-      }));
-    }, []),
+    onLiveInputLost: dropLiveInput,
     liveInputConfig: audioState.liveInputConfig,
   });
 
-  /**
-   * Initialize the audio system fully.
-   *
-   * This handles the complete initialization sequence:
-   * 1. Loads the audio element for demo playback
-   * 2. Creates the AudioContext and attaches the NamEngine
-   * 3. Creates the NamNode and wires up the audio graph
-   * 4. Loads a model into the node
-   *
-   * After this function resolves, all audio nodes are guaranteed to exist.
-   *
-   * @param options.audioUrl - URL for demo audio (uses default if not provided)
-   * @param options.modelUrl - URL for NAM model (uses default if not provided)
-   * @param options.slimSize - Raw NAM-core slimmable size for A2 models
-   */
-  const init = useCallback(
-    async (options?: {
-      audioUrl?: string;
-      modelUrl?: string;
-      slimSize?: number;
-    }): Promise<void> => {
-      if (isInitializedRef.current || isInitializingRef.current) return;
+  // ---- Init ----------------------------------------------------------------
 
-      isInitializingRef.current = true;
-      setAudioState(prev => ({ ...prev, initState: 'initializing' }));
+  const init = useCallback((): Promise<AudioGraph> => {
+    if (graphRef.current) return Promise.resolve(graphRef.current);
+    if (initPromiseRef.current) return initPromiseRef.current;
 
-      try {
-        // Create and setup audio element
-        const audio = new Audio();
-        audio.crossOrigin = 'anonymous';
-        audio.src = options?.audioUrl || DEFAULT_AUDIO_SRC;
-        getAudioNodes().audioElement = audio;
-        document.body.appendChild(audio);
-
-        await new Promise<void>((resolve, reject) => {
-          const handleLoad = () => resolve();
-          const handleError = () =>
-            reject(new Error('Failed to load default audio'));
-          audio.addEventListener('loadeddata', handleLoad, { once: true });
-          audio.addEventListener('error', handleError, { once: true });
-          audio.load();
+    setAudioState(prev => ({ ...prev, initState: 'initializing' }));
+    const promise = AudioGraph.create(engineAssetsRef.current)
+      .then(graph => {
+        // Natural end of the demo clip: close the output and free the engine.
+        graph.element.addEventListener('ended', () => {
+          graph.setOutputEnabled(false);
+          stopped();
         });
-
-        // Safety net: reset playback state when audio file ends naturally.
-        // Player.tsx also listens for 'ended', but this catches edge cases where
-        // the player's listener might not fire (e.g., component unmounted).
-        audio.addEventListener('ended', () => {
-          const nodes = getAudioNodes();
-          if (nodes.outputGainNode && nodes.audioContext) {
-            nodes.outputGainNode.gain.setTargetAtTime(
-              0,
-              nodes.audioContext.currentTime,
-              0.01
-            );
-          }
-          setAudioState(prev => ({
-            ...prev,
-            isPlaying: false,
-            activePlayerId: null,
-          }));
-        });
-
-        // Create the AudioContext and attach the NAM engine (registers the
-        // worklet module + fetches the wasm binary; no SharedArrayBuffer).
-        const context = new AudioContext({ latencyHint: 'interactive' });
-        const engine = await NamEngine.attach(context, engineAssetsRef.current);
-        const namNode = await engine.createNode();
-        namNodeRef.current = namNode;
-
-        const nodes = getAudioNodes();
-        nodes.audioContext = context;
-        nodes.audioWorkletNode = namNode;
-
-        // Create gain nodes
-        nodes.inputGainNode = new GainNode(context, { gain: 1 });
-        nodes.outputGainNode = new GainNode(context, { gain: 1 });
-        nodes.bypassNode = new GainNode(context, { gain: 0 });
-
-        // Create metering nodes
-        const meterConfig = { fftSize: 2048 };
-        nodes.inputMeterNode = new AnalyserNode(context, meterConfig);
-        nodes.outputMeterNode = new AnalyserNode(context, meterConfig);
-
-        // Create source from audio element
-        nodes.sourceNode = context.createMediaElementSource(
-          nodes.audioElement!
-        );
-
-        // Connect audio graph
-        nodes.sourceNode.connect(nodes.inputGainNode);
-        nodes.inputGainNode.connect(nodes.inputMeterNode!);
-        nodes.inputMeterNode!.connect(nodes.bypassNode);
-        nodes.bypassNode.connect(nodes.outputGainNode);
-        nodes.inputMeterNode!.connect(namNode);
-        namNode.connect(nodes.outputGainNode);
-        nodes.outputGainNode.connect(nodes.outputMeterNode!);
-        nodes.outputMeterNode!.connect(context.destination);
-
-        context.resume();
-
-        // Load a model into the node (placeholder or the requested one)
-        const modelUrl =
-          options?.modelUrl ||
-          DEFAULT_MODELS.find(m => m.default)?.url ||
-          DEFAULT_MODELS[0].url;
-        await loadModelInternal(modelUrl, options?.slimSize);
-
-        // Now fully initialized
-        isInitializedRef.current = true;
-        setAudioState(prev => ({
-          ...prev,
-          initState: 'ready',
-        }));
-      } catch (error) {
+        graphRef.current = graph;
+        setAudioState(prev => ({ ...prev, initState: 'ready' }));
+        return graph;
+      })
+      .catch(error => {
+        initPromiseRef.current = null;
         setAudioState(prev => ({ ...prev, initState: 'uninitialized' }));
-        console.error('Error initializing audio system:', error);
         throw error;
-      } finally {
-        isInitializingRef.current = false;
+      });
+    initPromiseRef.current = promise;
+    return promise;
+  }, [stopped]);
+
+  const requireGraph = useCallback((): AudioGraph => {
+    const graph = graphRef.current;
+    if (!graph) throw new Error('Audio engine not initialized. Call init().');
+    return graph;
+  }, []);
+
+  // ---- Engine settings -----------------------------------------------------
+
+  const sync = useCallback(
+    async (settings: EngineSettings): Promise<void> => {
+      const graph = requireGraph();
+      const preModelUrl = settings.preModelUrl ?? null;
+      if (graph.preModelUrl !== preModelUrl) {
+        await graph.loadModel(preModelUrl, settings.slimSize, 'pre');
       }
+      if (graph.modelUrl !== settings.modelUrl) {
+        await graph.loadModel(settings.modelUrl, settings.slimSize);
+      }
+      if (graph.irUrl !== settings.ir.url) {
+        await graph.setIr({
+          url: settings.ir.url,
+          mix: settings.mix ?? settings.ir.mix,
+        });
+      } else if (settings.mix !== undefined && graph.ir.mix !== settings.mix) {
+        graph.setIrMix(settings.mix);
+      }
+      graph.setBypass(settings.bypassed);
+      setAudioState(prev => ({
+        ...prev,
+        modelUrl: graph.modelUrl,
+        preModelUrl: graph.preModelUrl,
+        irUrl: graph.irUrl,
+        irMix: graph.ir.mix,
+        irReverbLike: graph.ir.reverbLike,
+        isBypassed: graph.bypassed,
+      }));
     },
-    [getAudioNodes]
+    [requireGraph]
   );
 
-  // Internal model loading function used during init (bypasses isInitializingRef check)
-  const loadModelInternal = async (
-    modelUrl: string,
-    slimSize?: number
-  ): Promise<void> => {
-    const response = await fetch(modelUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch model: ${response.statusText}`);
-    }
-    const jsonStr = await response.text();
+  const setIrMix = useCallback((mix: number): void => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    graph.setIrMix(mix);
+    setAudioState(prev => ({ ...prev, irMix: graph.ir.mix }));
+  }, []);
 
-    const namNode = namNodeRef.current;
-    if (!namNode) {
-      throw new Error('NAM node not available');
-    }
-
-    // The model is parsed on the audio thread, so rendering through the node
-    // pauses for the duration (typically 100-300 ms). I ramp the output down
-    // before the load so the cut is click-free; the worklet fades back in
-    // after the swap.
-    const { audioContext, outputGainNode } = getAudioNodes();
-    const previousGain = outputGainNode?.gain.value ?? 1;
-    const muted =
-      audioContext !== null &&
-      outputGainNode !== null &&
-      audioContext.state === 'running' &&
-      previousGain > 0.001;
-    if (muted) {
-      outputGainNode!.gain.setTargetAtTime(0, audioContext!.currentTime, 0.005);
-      await new Promise(r => setTimeout(r, 30));
-    }
-
-    try {
-      // Non-slimmable models silently ignore slimSize.
-      await namNode.loadModel(jsonStr, { slimSize });
-    } finally {
-      if (muted) {
-        outputGainNode!.gain.setTargetAtTime(
-          previousGain,
-          audioContext!.currentTime,
-          0.01
-        );
-      }
-    }
-
-    setAudioState(prev => ({ ...prev, modelUrl }));
-  };
-
-  // Load model (public API with guards)
-  // Uses refs for guards to avoid stale closure issues when called
-  // immediately after init() within the same event handler
-  const loadModel = useCallback(
-    async (modelUrl: string, slimSize?: number): Promise<void> => {
-      if (isInitializingRef.current) {
-        throw new Error('Audio system is initializing');
-      }
-      if (!isInitializedRef.current) {
-        throw new Error('Audio system not initialized. Call init() first.');
-      }
-      await loadModelInternal(modelUrl, slimSize);
+  const loadAudio = useCallback(
+    async (url: string): Promise<void> => {
+      const graph = requireGraph();
+      await graph.loadAudio(url);
+      setAudioState(prev => ({ ...prev, audioUrl: graph.audioUrl }));
     },
+    [requireGraph]
+  );
+
+  const setBypass = useCallback((bypassed: boolean): void => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    graph.setBypass(bypassed);
+    setAudioState(prev => ({ ...prev, isBypassed: bypassed }));
+  }, []);
+
+  const connectVisualizer = useCallback(
+    (analyser: AnalyserNode) =>
+      graphRef.current?.connectVisualizer(analyser) ?? (() => {}),
     []
   );
 
-  // Load audio
-  const loadAudio = useCallback(
-    async (src: string): Promise<void> => {
-      const audioElement = getAudioNodes().audioElement;
+  // ---- Live input ----------------------------------------------------------
 
-      if (!audioElement) {
-        throw new Error('Audio element not initialized');
-      }
-
-      try {
-        audioElement.src = src;
-        await new Promise<void>((resolve, reject) => {
-          const handleLoad = () => {
-            audioElement.removeEventListener('loadeddata', handleLoad);
-            audioElement.removeEventListener('error', handleError);
-            resolve();
-          };
-          const handleError = () => {
-            audioElement.removeEventListener('loadeddata', handleLoad);
-            audioElement.removeEventListener('error', handleError);
-            reject(new Error('Failed to load audio'));
-          };
-
-          audioElement.addEventListener('loadeddata', handleLoad, {
-            once: true,
-          });
-          audioElement.addEventListener('error', handleError, { once: true });
-          audioElement.load();
-        });
-
-        setAudioState(prev => ({ ...prev, audioUrl: src }));
-      } catch (error) {
-        console.error('Error loading audio:', error);
-        throw error;
-      }
-    },
-    [getAudioNodes]
-  );
-
-  // Load IR with configuration
-  const loadIr = useCallback(
-    async ({ url, mix = 1, gain = 1 }: IrConfig): Promise<void> => {
-      const nodes = getAudioNodes();
-      const { audioContext, audioWorkletNode, outputGainNode } = nodes;
-      if (!audioContext || !audioWorkletNode || !outputGainNode) {
-        throw new Error('Audio system not initialized. Call init() first.');
-      }
-
-      try {
-        // Create or update gain nodes
-        if (!nodes.irWetGain) {
-          nodes.irWetGain = new GainNode(audioContext, { gain: mix });
-        } else {
-          nodes.irWetGain.gain.setValueAtTime(mix, audioContext.currentTime);
-        }
-
-        if (!nodes.irDryGain) {
-          nodes.irDryGain = new GainNode(audioContext, { gain: 1 - mix });
-        } else {
-          nodes.irDryGain.gain.setValueAtTime(
-            1 - mix,
-            audioContext.currentTime
-          );
-        }
-
-        if (!nodes.irGain) {
-          nodes.irGain = new GainNode(audioContext, { gain });
-        } else {
-          nodes.irGain.gain.setValueAtTime(gain, audioContext.currentTime);
-        }
-
-        // Fetch and decode IR
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch IR: ${response.statusText}`);
-        }
-
-        const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-        // Create new convolver
-        const newIrNode = new ConvolverNode(audioContext);
-        newIrNode.buffer = audioBuffer;
-
-        // Disconnect existing connections
-        audioWorkletNode.disconnect();
-        nodes.irNode?.disconnect();
-        nodes.irWetGain?.disconnect();
-        nodes.irDryGain?.disconnect();
-        nodes.irGain?.disconnect();
-
-        // Setup parallel wet/dry signal paths
-        // Wet path: worklet -> IR -> gain -> wet gain -> output
-        audioWorkletNode.connect(newIrNode);
-        newIrNode.connect(nodes.irGain);
-        nodes.irGain.connect(nodes.irWetGain);
-        nodes.irWetGain.connect(outputGainNode);
-
-        // Dry path: worklet -> dry gain -> output
-        audioWorkletNode.connect(nodes.irDryGain);
-        nodes.irDryGain.connect(outputGainNode);
-
-        nodes.irNode = newIrNode;
-        setAudioState(prev => ({ ...prev, irUrl: url }));
-      } catch (error) {
-        console.error('Error loading IR:', error);
-        throw error;
-      }
-    },
-    [getAudioNodes]
-  );
-
-  // Remove IR
-  const removeIr = useCallback((): void => {
-    const nodes = getAudioNodes();
-    const { audioWorkletNode, outputGainNode } = nodes;
-
-    if (!audioWorkletNode || !outputGainNode) return;
-
-    // Disconnect all IR nodes
-    audioWorkletNode.disconnect();
-    nodes.irNode?.disconnect();
-    nodes.irWetGain?.disconnect();
-    nodes.irDryGain?.disconnect();
-    nodes.irGain?.disconnect();
-
-    // Reset IR nodes
-    nodes.irNode = null;
-    nodes.irWetGain = null;
-    nodes.irDryGain = null;
-    nodes.irGain = null;
-
-    // Reconnect direct path
-    audioWorkletNode.connect(outputGainNode);
-    setAudioState(prev => ({ ...prev, irUrl: null }));
-  }, [getAudioNodes]);
-
-  // Set bypass to a specific state (idempotent, reads the audio node to determine if action is needed)
-  const setBypass = useCallback(
-    (bypassed: boolean): void => {
-      if (!isAudioReady()) {
-        console.warn('Cannot set bypass: audio not initialized');
-        return;
-      }
-
-      const nodes = getAudioNodes();
-      const {
-        audioWorkletNode,
-        audioContext,
-        bypassNode,
-        outputGainNode,
-        irNode,
-        irWetGain,
-        irDryGain,
-        irGain,
-      } = nodes;
-
-      if (!audioWorkletNode || !audioContext || !bypassNode) {
-        console.warn('Cannot set bypass: required nodes not available');
-        return;
-      }
-
-      const currentlyBypassed = bypassNode.gain.value > 0.5;
-      if (currentlyBypassed === bypassed) return; // already in desired state
-
-      try {
-        if (bypassed) {
-          // Enable bypass
-          if (irNode && irWetGain && irDryGain && irGain && outputGainNode) {
-            // Disconnect IR paths
-            audioWorkletNode.disconnect(irNode);
-            audioWorkletNode.disconnect(irDryGain);
-            irNode.disconnect(irGain);
-            irGain.disconnect(irWetGain);
-            irWetGain.disconnect(outputGainNode);
-            irDryGain.disconnect(outputGainNode);
-          } else if (outputGainNode) {
-            // Disconnect direct path
-            audioWorkletNode.disconnect(outputGainNode);
-          }
-          bypassNode.gain.setTargetAtTime(1, audioContext.currentTime, 0.002);
-        } else {
-          // Disable bypass
-          if (irNode && irWetGain && irDryGain && irGain && outputGainNode) {
-            // Reconnect IR paths
-            audioWorkletNode.connect(irNode);
-            irNode.connect(irGain);
-            irGain.connect(irWetGain);
-            irWetGain.connect(outputGainNode);
-            audioWorkletNode.connect(irDryGain);
-            irDryGain.connect(outputGainNode);
-          } else if (outputGainNode) {
-            // Reconnect direct path
-            audioWorkletNode.connect(outputGainNode);
-          }
-          bypassNode.gain.setTargetAtTime(0, audioContext.currentTime, 0.002);
-        }
-
-        setAudioState(prev => ({ ...prev, isBypassed: bypassed }));
-      } catch (error) {
-        console.error('Error setting bypass:', error);
-      }
-    },
-    [isAudioReady, getAudioNodes]
-  );
-
-  // Sync engine settings (model, IR, bypass) to match a player's preferences
-  const syncEngineSettings = useCallback(
-    async (config: {
-      modelUrl: string;
-      ir: { url: string | null; mix?: number; gain?: number };
-      bypassed: boolean;
-      slimSize?: number;
-    }): Promise<void> => {
-      const currentModelUrl = audioState.modelUrl;
-      const currentIrUrl = audioState.irUrl;
-
-      if (currentModelUrl !== config.modelUrl) {
-        await loadModel(config.modelUrl, config.slimSize);
-      }
-      if (config.ir.url) {
-        if (currentIrUrl !== config.ir.url) {
-          await loadIr({
-            url: config.ir.url,
-            mix: config.ir.mix,
-            gain: config.ir.gain,
-          });
-        }
-      } else if (currentIrUrl) {
-        removeIr();
-      }
-      setBypass(config.bypassed);
-    },
-    [
-      audioState.modelUrl,
-      audioState.irUrl,
-      loadModel,
-      loadIr,
-      removeIr,
-      setBypass,
-    ]
-  );
-
-  // Connect visualizer
-  const connectVisualizerNode = useCallback(
-    (analyserNode: AnalyserNode): (() => void) => {
-      const { outputGainNode } = getAudioNodes();
-
-      if (!outputGainNode) {
-        return () => {};
-      }
-
-      outputGainNode.connect(analyserNode);
-
-      return () => {
-        try {
-          outputGainNode.disconnect(analyserNode);
-        } catch {
-          // Node already disconnected
-        }
-      };
-    },
-    [getAudioNodes]
-  );
-
-  // Start play audio input from microphone/audio interface
-  // Optional initialChannel and initialChannelGains allow restoring a previous configuration
-  // without needing to call selectLiveInputChannel separately (which would have stale closure issues)
   const startLiveInput = useCallback(
-    async (
-      deviceId?: string,
-      options?: {
-        initialChannel?: ChannelSelection;
-        initialChannelGains?: Record<ChannelSelection, number>;
-      }
-    ): Promise<void> => {
-      const requestedChannel = options?.initialChannel ?? 'first';
-      const initialChannelGains = options?.initialChannelGains ?? {
-        first: 0,
-        second: 0,
-      };
-
-      if (!isAudioReady()) {
-        throw new Error('Audio system not initialized. Call init() first.');
-      }
-      const nodes = getAudioNodes();
-      const { audioContext, inputMeterNode, sourceNode, audioElement } = nodes;
-
-      if (!audioContext || !inputMeterNode) {
-        throw new Error('Required audio nodes not available.');
-      }
-
-      // Take over audio engine: stop any current playback and reset ownership
-      if (audioElement) {
-        audioElement.pause();
-      }
-      if (nodes.outputGainNode && audioContext) {
-        nodes.outputGainNode.gain.setTargetAtTime(
-          0,
-          audioContext.currentTime,
-          0.01
-        );
-      }
-
+    async (deviceId?: string): Promise<void> => {
+      const graph = requireGraph();
+      // Taking the engine: whoever was playing stops.
+      graph.element.pause();
+      graph.setOutputEnabled(false);
       setAudioState(prev => ({
         ...prev,
         inputMode: { type: 'connecting' },
         isPlaying: false,
         activePlayerId: null,
       }));
-
       try {
-        // Clean up any existing live input nodes before setting up new ones
-        cleanupLiveInputNodes(nodes);
-
-        // Request microphone/audio interface access with settings optimized for instruments
-        const baseAudioConstraints: MediaTrackConstraints = {
-          channelCount: { ideal: 2 }, // Request stereo if available
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        };
-
-        let stream: MediaStream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              ...baseAudioConstraints,
-              deviceId: deviceId ? { exact: deviceId } : undefined,
-            },
-          });
-        } catch (error) {
-          if (
-            deviceId &&
-            error instanceof DOMException &&
-            error.name === 'OverconstrainedError'
-          ) {
-            console.warn(
-              `Device ${deviceId} not available, falling back to default`
-            );
-            stream = await navigator.mediaDevices.getUserMedia({
-              audio: baseAudioConstraints,
-            });
-          } else {
-            throw error;
-          }
-        }
-
-        nodes.mediaStream = stream;
-
-        // Get actual channel count and device ID from the track
-        const track = stream.getAudioTracks()[0];
-        const settings = track.getSettings();
-        const channelCount = settings.channelCount ?? 1;
-        const actualDeviceId = settings.deviceId ?? deviceId ?? '';
-
-        // Clamp channel selection to what the device actually supports
-        const initialChannel = channelCount > 1 ? requestedChannel : 'first';
-        const initialChannelIndex = initialChannel === 'first' ? 0 : 1;
-
-        // Listen for track ending (device disconnected, permission revoked, etc.)
-        // This is the most reliable signal: Chrome kills the track immediately on permission reset,
-        // but may not fire the Permissions API 'change' event.
-        track.addEventListener('ended', () => {
-          console.warn('Audio track ended unexpectedly');
-          handleLiveInputUnavailable('device-disconnected');
-        });
-
-        // Create source node from the live stream
-        const liveSource = audioContext.createMediaStreamSource(stream);
-        nodes.liveSourceNode = liveSource;
-
-        // Disconnect file source from inputGainNode
-        sourceNode?.disconnect();
-
-        // Create dedicated gain node for live input (applied before channel splitting)
-        nodes.liveInputGainNode = new GainNode(audioContext, { gain: 1 });
-
-        // Create channel splitter for multi-channel input
-        nodes.channelSplitterNode = audioContext.createChannelSplitter(2);
-        nodes.channelMergerNode = audioContext.createChannelMerger(1);
-
-        // Create per-channel meters (post-gain, since gain is applied before splitting)
-        const meterConfig = { fftSize: 2048 };
-        nodes.channel0LiveMeter = new AnalyserNode(audioContext, meterConfig);
-        nodes.channel1LiveMeter = new AnalyserNode(audioContext, meterConfig);
-
-        // Connect: liveSource → liveInputGainNode → channelSplitter
-        // This applies gain BEFORE channel splitting, so meters show post-gain levels
-        liveSource.connect(nodes.liveInputGainNode);
-        nodes.liveInputGainNode.connect(nodes.channelSplitterNode);
-
-        // Connect each channel to its meter (these are now post-gain)
-        nodes.channelSplitterNode.connect(nodes.channel0LiveMeter, 0);
-        if (channelCount > 1) {
-          nodes.channelSplitterNode.connect(nodes.channel1LiveMeter, 1);
-        }
-
-        // Route selected channel to processing chain
-        // Connect: channelSplitter → channelMerger → inputMeterNode (bypassing inputGainNode)
-        nodes.channelSplitterNode.connect(
-          nodes.channelMergerNode,
-          initialChannelIndex,
-          0
+        const previous = graph.live ?? liveConfigRef.current;
+        const config = await graph.startLive(
+          deviceId,
+          previous
+            ? { channel: previous.channel, gainsDb: previous.gainsDb }
+            : {},
+          () => handleLiveInputUnavailable('device-disconnected')
         );
-        nodes.channelMergerNode.connect(inputMeterNode);
-
-        // Apply initial gain for the selected channel
-        const initialGainDb = initialChannelGains[initialChannel] ?? 0;
-        const initialLinearGain = dbToLinear(initialGainDb);
-        nodes.liveInputGainNode.gain.setValueAtTime(
-          initialLinearGain,
-          audioContext.currentTime
-        );
-
         setAudioState(prev => ({
           ...prev,
           inputMode: { type: 'live' },
-          liveInputConfig: {
-            deviceId: actualDeviceId,
-            channelCount: channelCount,
-            selectedChannel: initialChannel,
-            channelGains: initialChannelGains,
-          },
+          liveInputConfig: config,
         }));
-
-        // Resume audio context if suspended
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-        }
-
-        // Re-apply output device routing after changing input sources
-        const selectedOutputId = audioOutputDevices.selectedDeviceId;
-        await applyOutputDeviceRouting(nodes, selectedOutputId);
       } catch (error) {
-        // Clean up any partially-created live input nodes
-        cleanupLiveInputNodes(nodes);
-
-        setAudioState(prev => ({
-          ...prev,
-          inputMode: { type: 'demo' },
-        }));
-        console.error('Error starting live input:', error);
+        setAudioState(prev => ({ ...prev, inputMode: { type: 'demo' } }));
         throw error;
       }
     },
-    [
-      isAudioReady,
-      getAudioNodes,
-      audioOutputDevices.selectedDeviceId,
-      handleLiveInputUnavailable,
-    ]
+    [requireGraph, handleLiveInputUnavailable]
   );
 
-  // Reconnect live input using the saved liveInputConfig.
-  // No-op if no config exists or live input is already active.
+  // The graph, not React state, says whether the input is live: this runs
+  // right after startLiveInput() in the same tick, before state has settled.
   const reconnectLiveInput = useCallback(async (): Promise<void> => {
-    if (audioState.inputMode.type === 'live') return;
-    if (!audioState.liveInputConfig) return;
-    await startLiveInput(audioState.liveInputConfig.deviceId, {
-      initialChannel: audioState.liveInputConfig.selectedChannel,
-      initialChannelGains: audioState.liveInputConfig.channelGains,
-    });
-  }, [audioState.inputMode.type, audioState.liveInputConfig, startLiveInput]);
+    const graph = graphRef.current;
+    if (graph?.live) return;
+    const config = liveConfigRef.current;
+    if (!config) return;
+    await startLiveInput(config.deviceId);
+  }, [startLiveInput]);
 
-  // Stop live input and prepare for demo mode takeover
-  // Note: This preserves liveInputConfig so players can still see/use the configured device.
   const stopLiveInput = useCallback((): void => {
-    teardownLiveInput(getAudioNodes(), { muteOutput: true });
-
-    // Reset ownership - no player owns the audio engine until they press play
+    const graph = graphRef.current;
+    if (!graph?.live) return;
+    graph.stopLive();
+    graph.setOutputEnabled(false);
     setAudioState(prev => ({
       ...prev,
       inputMode: { type: 'demo' },
       isPlaying: false,
       activePlayerId: null,
     }));
-  }, [getAudioNodes]);
-
-  // Select which channel to route from live input to processing
-  const selectLiveInputChannel = useCallback(
-    (channel: ChannelSelection): void => {
-      const nodes = getAudioNodes();
-      const {
-        channelSplitterNode,
-        channelMergerNode,
-        liveInputGainNode,
-        audioContext,
-      } = nodes;
-
-      if (!channelSplitterNode || !channelMergerNode) {
-        console.warn('Cannot select channel: live input not active');
-        return;
-      }
-
-      const newChannelIndex = channel === 'first' ? 0 : 1;
-
-      // Disconnect all splitter → merger connections, then connect only the new channel.
-      // This avoids relying on React state to track the current connection, which can be
-      // stale due to closure capture. Since connect() is additive, a missed disconnect
-      // would result in both channels being heard simultaneously.
-      channelSplitterNode.disconnect(channelMergerNode);
-      channelSplitterNode.connect(channelMergerNode, newChannelIndex, 0);
-
-      // Apply gain for the new channel (side effect outside state updater)
-      if (liveInputGainNode && audioContext && audioState.liveInputConfig) {
-        const gainDb = audioState.liveInputConfig.channelGains?.[channel] ?? 0;
-        liveInputGainNode.gain.setTargetAtTime(
-          dbToLinear(gainDb),
-          audioContext.currentTime,
-          0.02
-        );
-      }
-
-      // Pure state update
-      setAudioState(prev => {
-        if (!prev.liveInputConfig) return prev;
-        return {
-          ...prev,
-          liveInputConfig: {
-            ...prev.liveInputConfig,
-            selectedChannel: channel,
-          },
-        };
-      });
-    },
-    [getAudioNodes, audioState.liveInputConfig]
-  );
-
-  // Set live input gain for the currently selected channel (persists to liveInputConfig)
-  const setLiveInputGain = useCallback(
-    (gainDb: number): void => {
-      const nodes = getAudioNodes();
-      const { liveInputGainNode, audioContext } = nodes;
-
-      // Apply gain to the live input gain node (before channel splitting)
-      if (liveInputGainNode && audioContext) {
-        const linearGain = dbToLinear(gainDb);
-        liveInputGainNode.gain.setTargetAtTime(
-          linearGain,
-          audioContext.currentTime,
-          0.02 // 20ms smoothing
-        );
-      }
-
-      // Persist to liveInputConfig for the currently selected channel
-      setAudioState(prev => {
-        if (!prev.liveInputConfig) return prev;
-        const selectedChannel = prev.liveInputConfig.selectedChannel ?? 'first';
-        return {
-          ...prev,
-          liveInputConfig: {
-            ...prev.liveInputConfig,
-            channelGains: {
-              ...prev.liveInputConfig.channelGains,
-              [selectedChannel]: gainDb,
-            },
-          },
-        };
-      });
-    },
-    [getAudioNodes]
-  );
-
-  // Open the global settings dialog
-  const openSettingsDialog = useCallback(
-    (config: {
-      playerId?: string;
-      selectedModel: Model;
-      selectedIr: IR;
-      onMonitoringChange: (enabled: boolean) => void | Promise<void>;
-    }): void => {
-      setSettingsDialog({
-        isOpen: true,
-        sourceMode,
-        playerId: config.playerId,
-        selectedModel: config.selectedModel,
-        selectedIr: config.selectedIr,
-        onMonitoringChange: config.onMonitoringChange,
-      });
-    },
-    [sourceMode]
-  );
-
-  // Set playing state (controls audioElement in demo mode, outputGainNode in live mode)
-  // playerId identifies which player is taking control (required when shouldPlay=true)
-  const setPlaying = useCallback(
-    (shouldPlay: boolean, playerId?: string): void => {
-      // Guard: require initialization when starting playback
-      // (stopping is always allowed to handle edge cases)
-      if (shouldPlay && !isAudioReady()) {
-        console.warn('Cannot start playback: audio not initialized');
-        return;
-      }
-
-      const nodes = getAudioNodes();
-      const { audioElement, outputGainNode, audioContext, mediaStream } = nodes;
-
-      // Check actual node state, not React state (which can be stale due to async updates)
-      const isActuallyLiveMode = mediaStream !== null && mediaStream.active;
-
-      // Update audio nodes based on actual input mode
-      if (isActuallyLiveMode) {
-        // Live mode: control output gain only (no audio element involved)
-        if (outputGainNode && audioContext) {
-          // Resume context if suspended
-          if (shouldPlay && audioContext.state === 'suspended') {
-            audioContext.resume().catch(error => {
-              console.error('Failed to resume audio context:', error);
-              setAudioState(prev => ({
-                ...prev,
-                isPlaying: false,
-                activePlayerId: null,
-              }));
-            });
-          }
-          outputGainNode.gain.setTargetAtTime(
-            shouldPlay ? 1 : 0,
-            audioContext.currentTime,
-            0.01 // 10ms for quick response
-          );
-        }
-      } else {
-        // Demo mode: control audio element playback
-        if (audioElement) {
-          if (shouldPlay) {
-            audioContext?.resume().catch(error => {
-              console.error('Failed to resume audio context:', error);
-            });
-            audioElement.play().catch(error => {
-              console.error('Playback failed:', error);
-              setAudioState(prev => ({
-                ...prev,
-                isPlaying: false,
-                activePlayerId: null,
-              }));
-            });
-          } else {
-            audioElement.pause();
-          }
-        }
-        // Also set output gain for demo mode
-        if (outputGainNode && audioContext) {
-          outputGainNode.gain.setTargetAtTime(
-            shouldPlay ? 1 : 0,
-            audioContext.currentTime,
-            0.01
-          );
-        }
-      }
-
-      setAudioState(prev => ({
-        ...prev,
-        isPlaying: shouldPlay,
-        activePlayerId: shouldPlay ? (playerId ?? prev.activePlayerId) : null,
-      }));
-    },
-    [isAudioReady, getAudioNodes, audioState.inputMode.type]
-  );
-
-  // Cleanup without destroying audio
-  // This should keep the audio context alive and the audio nodes in place,
-  // but reset the states and stop playback.
-  const cleanup = useCallback((): void => {
-    setPlaying(false); // stop playback for demo or live mode
-    // also reset the audio element current time to the start of the audio
-    const { audioElement } = getAudioNodes();
-    if (audioElement) {
-      audioElement.currentTime = 0;
-    }
-
-    // remove the ir from the engine
-    removeIr();
-
-    setAudioState(prev => ({
-      ...prev,
-      // reset the other states
-      modelUrl: null,
-      audioUrl: null,
-      isBypassed: false,
-    }));
-  }, [getAudioNodes, removeIr, setPlaying]);
-
-  // Close the global settings dialog (keeps whatever the user has set)
-  const closeSettingsDialog = useCallback((): void => {
-    setSettingsDialog(prev => ({ ...prev, isOpen: false }));
   }, []);
 
-  // Full teardown on provider unmount (handles HMR/routing teardown)
+  const selectLiveInputChannel = useCallback(
+    (channel: ChannelSelection): void => {
+      const graph = graphRef.current;
+      if (!graph?.live) return;
+      graph.selectLiveChannel(channel);
+      setAudioState(prev => ({ ...prev, liveInputConfig: graph.live }));
+    },
+    []
+  );
+
+  const setLiveInputGain = useCallback((gainDb: number): void => {
+    const graph = graphRef.current;
+    if (!graph?.live) return;
+    graph.setLiveGainDb(gainDb);
+    setAudioState(prev => ({ ...prev, liveInputConfig: graph.live }));
+  }, []);
+
+  // ---- Teardown ------------------------------------------------------------
+
   useEffect(() => {
-    const nodesRef = audioNodesRef;
-    const initRef = isInitializedRef;
-    const nodeRef = namNodeRef;
     return () => {
-      const nodes = nodesRef.current;
-      void nodeRef.current?.dispose();
-      nodeRef.current = null;
-      if (nodes.audioContext && nodes.audioContext.state !== 'closed') {
-        nodes.audioContext.close();
-      }
-      nodes.audioElement?.remove();
-      initRef.current = false;
+      void graphRef.current?.dispose();
+      graphRef.current = null;
+      initPromiseRef.current = null;
     };
   }, []);
 
-  // Memoize context value
-  const contextValue = useMemo<T3kPlayerContextType>(
+  const value = useMemo<T3kPlayerContextType>(
     () => ({
       audioState,
-      sourceMode,
       microphonePermission,
       audioInputDevices,
       audioOutputDevices,
-      getAudioNodes,
-      isAudioReady,
+      getGraph,
       init,
-      loadModel,
+      sync,
       loadAudio,
-      loadIr,
-      removeIr,
       setBypass,
-      syncEngineSettings,
-      cleanup,
-      connectVisualizerNode,
+      setIrMix,
+      setPlaying,
+      release,
+      connectVisualizer,
       startLiveInput,
       reconnectLiveInput,
       stopLiveInput,
       selectLiveInputChannel,
       setLiveInputGain,
-      setOutputDevice,
-      setPlaying,
-      setSourceMode,
       requestMicrophonePermission,
       refreshAudioInputDevices,
       refreshAudioOutputDevices,
-      settingsDialog,
-      openSettingsDialog,
-      closeSettingsDialog,
+      setOutputDevice,
     }),
     [
       audioState,
-      sourceMode,
       microphonePermission,
       audioInputDevices,
       audioOutputDevices,
-      getAudioNodes,
-      isAudioReady,
+      getGraph,
       init,
-      loadModel,
+      sync,
       loadAudio,
-      loadIr,
-      removeIr,
       setBypass,
-      syncEngineSettings,
-      cleanup,
-      connectVisualizerNode,
+      setIrMix,
+      setPlaying,
+      release,
+      connectVisualizer,
       startLiveInput,
       reconnectLiveInput,
       stopLiveInput,
       selectLiveInputChannel,
       setLiveInputGain,
-      setOutputDevice,
-      setPlaying,
-      setSourceMode,
       requestMicrophonePermission,
       refreshAudioInputDevices,
       refreshAudioOutputDevices,
-      settingsDialog,
-      openSettingsDialog,
-      closeSettingsDialog,
+      setOutputDevice,
     ]
   );
 
   return (
-    <T3kPlayerContext.Provider value={contextValue}>
+    <T3kPlayerContext.Provider value={value}>
       {children}
     </T3kPlayerContext.Provider>
   );
 }
 
-// SSR-safe defaults (no-op implementations for server-side rendering)
+// SSR: a no-op context so server renders don't need a provider.
 function createNoopContext(): T3kPlayerContextType {
+  const noop = () => {};
+  const resolve = async () => {};
   return {
-    audioState: {
-      initState: 'uninitialized',
-      isPlaying: false,
-      activePlayerId: null,
-      isBypassed: false,
-      modelUrl: null,
-      irUrl: null,
-      audioUrl: null,
-      inputMode: { type: 'demo' },
-      liveInputConfig: null,
-    },
-    sourceMode: 'demo',
+    audioState: INITIAL_AUDIO_STATE,
     microphonePermission: { status: 'idle', error: null },
     audioInputDevices: {
       devices: [],
@@ -1212,54 +458,37 @@ function createNoopContext(): T3kPlayerContextType {
       preferredDeviceId: null,
     },
     audioOutputDevices: { devices: [], selectedDeviceId: null },
-    getAudioNodes: () => ({ ...EMPTY_AUDIO_NODES }),
-    isAudioReady: () => false,
-    init: async () => {},
-    loadModel: async () => {},
-    loadAudio: async () => {},
-    loadIr: async () => {},
-    removeIr: () => {},
-    setBypass: () => {},
-    syncEngineSettings: async () => {},
-    cleanup: () => {},
-    connectVisualizerNode: () => () => {},
-    startLiveInput: async () => {},
-    reconnectLiveInput: async () => {},
-    stopLiveInput: () => {},
-    selectLiveInputChannel: () => {},
-    setLiveInputGain: () => {},
-    setOutputDevice: async () => {},
-    setPlaying: (() => {}) as T3kPlayerContextType['setPlaying'],
-    setSourceMode: () => {},
+    getGraph: () => null,
+    init: () => Promise.reject(new Error('No audio on the server')),
+    sync: resolve,
+    loadAudio: resolve,
+    setBypass: noop,
+    setIrMix: noop,
+    setPlaying: noop as T3kPlayerContextType['setPlaying'],
+    release: noop,
+    connectVisualizer: () => noop,
+    startLiveInput: resolve,
+    reconnectLiveInput: resolve,
+    stopLiveInput: noop,
+    selectLiveInputChannel: noop,
+    setLiveInputGain: noop,
     requestMicrophonePermission: async () => null,
     refreshAudioInputDevices: async () => ({
       inputDevices: [],
       preferredDeviceId: null,
     }),
-    refreshAudioOutputDevices: async () => {},
-    settingsDialog: {
-      isOpen: false,
-      sourceMode: 'demo',
-      onMonitoringChange: () => {},
-    },
-    openSettingsDialog: () => {},
-    closeSettingsDialog: () => {},
+    refreshAudioOutputDevices: resolve,
+    setOutputDevice: resolve,
   };
 }
 
-// Custom hook; useContext is called unconditionally to satisfy Rules of Hooks
 export function useT3kPlayerContext(): T3kPlayerContextType {
   const context = useContext(T3kPlayerContext);
-
-  if (typeof window === 'undefined') {
-    return createNoopContext();
-  }
-
+  if (typeof window === 'undefined') return createNoopContext();
   if (!context) {
     throw new Error(
-      'useT3kPlayerContext must be used within a T3kPlayerContextProvider'
+      'useT3kPlayerContext must be used within a T3kPlayerProvider'
     );
   }
-
   return context;
 }

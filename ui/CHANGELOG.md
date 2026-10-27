@@ -1,5 +1,136 @@
 # Changelog
 
+## 3.0.0
+
+One player component for every surface. v2 shipped three components
+(`T3kPlayer`, `T3kSlimPlayer`, `T3kAcordianPlayer`, plus `T3kDisabledPlayer`)
+with three prop contracts and five callbacks. v3 ships one `T3kPlayer` that
+takes a list of **tones**, a **layout**, and a single **event stream**, and
+adds an embed bridge so the same player can run inside a cross-origin iframe
+and report its height to the host page. The engine is unchanged.
+
+This is a clean break: there are no compatibility shims. The migration table
+below covers every removed symbol.
+
+### Breaking changes
+
+| v2                                                                 | v3                                                                                        |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `<T3kPlayer models irs inputs …>`                                  | `<T3kPlayer tones={[{ id, meta?, assets: { models, irs, inputs } }]} layout='full'>`      |
+| `<T3kAcordianPlayer …>`                                            | `<T3kPlayer … layout='compact'>` (`docked` to sit under a card)                           |
+| `<T3kSlimPlayer …>`                                                | `<T3kPlayer … layout='mini'>`                                                             |
+| `<T3kDisabledPlayer reason>`                                       | `<T3kPlayer … disabled={{ reason }}>`                                                     |
+| `infoSlot`                                                         | `tones[i].meta` renders the header; `headerSlot` for extra playbar content                |
+| `previewMode={PREVIEW_MODE.MODEL \| PREVIEW_MODE.IR}`              | `assets.previewMode: 'model' \| 'ir'` (per tone)                                          |
+| `onPlayDemo({ model, ir, input })`                                 | `onEvent({ type: 'play', mode: 'demo', toneId, selection })`                              |
+| `onPlayLive({ model, ir, device })`                                | `onEvent({ type: 'play', mode: 'live', toneId, selection, device })`                      |
+| `onModelChange(model)` / `onIrChange(ir)` / `onInputChange(input)` | `onEvent({ type: 'selection_change', toneId, field: 'model' \| 'ir' \| 'input', value })` |
+| `isLoading`                                                        | `isLoading` (unchanged)                                                                   |
+| `slimSize`                                                         | `slimSize` (unchanged)                                                                    |
+| `PREVIEW_MODE` enum                                                | `PreviewMode` string union                                                                |
+| Custom `Select` component                                          | Native `<select>` (`NativeSelect`) — renders inside iframes and on every platform         |
+
+New in `T3kPlayerProps`: `tones`, `layout`, `defaultExpanded`,
+`defaultToneId`, `live`, `disabled`, `theme`, `headerSlot`, `attribution`,
+`linkTarget`, `docked`, `size`, `id`, `onEvent`.
+
+Also breaking, from the second pass over v3:
+
+- **NAM A2 only.** `AudioGraph.loadModel` rejects anything that is not a
+  `SlimmableContainer` (surfaces as an `error` event on play). The bundled demo
+  models were re-captured as A2 on TONE3000 (see `public/models/README.md`).
+- **`IR.url` is `string | null`** (`null` = no cabinet; `NO_IR` is exported).
+  `IR.gainDb` is gone: IRs are gain-staged automatically to unity in-band
+  response on load (TONE3000 pedal convention), `ConvolverNode.normalize` is
+  off. `mix` stays but is now optional: omitted, the engine applies the
+  plugin's length rule (over 1 s → 0.5, else 1).
+- **`Model.url` is `string | null`** (`null` = pass-through; `NO_MODEL` is
+  exported) so an amp companion can offer "None".
+- **`AudioGraph` has two NAM slots.** `loadModel(url, slimSize, slot)` takes
+  `url: string | null` and `slot: 'main' | 'pre'`; `irUrl` became a getter
+  over `graph.ir` (`url`, `mix`, `reverbLike`); `setIrMix(mix)` was added.
+  `EngineSettings` gained `preModelUrl` and `mix`.
+- **`ToneMeta.badge` → `format`; `chips` dropped; `imageFallback` added.** The
+  header renders like a TONE3000 tone card: `subtitle` as muted text, `format`
+  as the NAM / IR pill, the author's avatar (TONE3000 silhouette fallback) and
+  the TONE3000 verified check. `imageFallback` fills the image square when
+  there's no `imageUrl`.
+- **No settings dialog.** The live setup wizard — Play Live → Microphone
+  Access → Settings (interface, input channel meters, output device, Hear
+  Yourself, Done) — renders inline under the playbar so it works in an
+  iframe; `SettingsDialog`, `Dialog`, `InlineAlert`, `Select` are removed.
+  The playbar's LED · LIVE | speaker button mutes/unmutes. The context no
+  longer exposes `getAudioNodes()`; use `getGraph()` (an `AudioGraph`).
+- **Playlists are a pager**, not a tone list: ‹ n/N › in the header steps the
+  active tone. `tones[i].meta` renders a dense header in `compact`.
+
+### Added
+
+- **Any input channel.** The live input asks the browser for every channel
+  the interface has and offers a radio + meter for each one it delivers, so a
+  guitar on input 3 of an 8-in interface is selectable. `ChannelSelection` is
+  now a 0-based `number` (was `'first' | 'second'`) and
+  `LiveInputConfig.gainsDb` is a `number[]`. Browsers decide how many
+  channels they hand over: Firefox gives the device's channels, Chrome and
+  Safari usually stop at 2.
+- **Playlists.** Two or more tones share one playbar and controls and page
+  through the header. Assets may be given eagerly or as
+  `() => Promise<PlayerAssets>` and are resolved on first use (deduped). IR
+  and input choices carry over to the next tone when it offers the same URL.
+- **`onEvent` stream.** `ready`, `play`, `pause`, `ended`, `tone_change`,
+  `selection_change`, `bypass_change`, `source_change`, `view_change`,
+  `expand`, `collapse`, `resize`, `error`. Exactly one `pause`/`ended` is
+  emitted for every `play`, including when another player on the page takes
+  over the engine.
+- **Lazy engine.** Nothing is created or fetched (AudioContext, wasm, models,
+  IRs, DI tracks) until the first user gesture. Model JSON and decoded IRs
+  are cached per document / per context.
+- **Fixed-topology audio graph** (`AudioGraph`, exported). Bypass is a
+  crossfade, IR changes swap the convolver buffer, mix is a wet/dry pair; no
+  runtime rewiring, so switching never clicks.
+- **Multiple embeds on one page.** Players under one provider share the
+  engine; players in separate same-origin iframes coordinate single playback
+  over `BroadcastChannel('t3k-player:playback')`. Source tab is per player.
+- **Loudness normalization clamp.** Loudness-aware models normalize to −18 dB
+  clamped to ±12 dB; implausible `loudness` values (≤ −100 or > 0) run at
+  unity, matching the plugin and pedal.
+- **`assets.labels`** to recaption the selects; defaults follow the TONE3000
+  vocabulary ("NAM Capture", "Cab", "Amp", "Input").
+- **`assets.preModels`.** A second NAM ahead of the tone's model, for cabinet
+  captures that want an amp in front. The controls show one companion select
+  beside the tone: `preModels` if given, otherwise the other of `models` /
+  `irs` — enough for TONE3000's gear matrix without the player knowing gear.
+  `Selection.preModel`, `selection_change` with `field: 'preModel'`, and
+  `labels.preModel` (default "Amp") come with it.
+- **Mix knob.** Shown beside the IR select whenever the active IR is
+  reverb-like (explicit `mix` below 1, or longer than 1 s with no explicit
+  mix). The value is per tone (`Selection.mix`, `selection_change` with
+  `field: 'mix'`) and resets when the IR changes. `DEFAULT_CAB_IRS` and
+  `DEFAULT_REVERB_IRS` split the bundled list; `DEFAULT_IRS` is both.
+- **Embed bridge.** `useEmbedBridge()` (from `neural-amp-modeler-wasm/embed`)
+  forwards events and height to a host page over `postMessage`;
+  `neural-amp-modeler-wasm/embed.js` is a dependency-free host script that
+  sizes every `iframe[data-t3k-player]` and re-dispatches events as
+  `t3k:<type>` CustomEvents. Protocol v1, see `src/embed/protocol.ts`.
+  Live mode works inside embeds when the host's iframe carries
+  `allow="autoplay; microphone"`; the host script warns when it's missing,
+  and the live tab explains the denied policy (with a link to `meta.href`)
+  instead of showing browser unblock steps.
+- **Design tokens.** Colours, type and radii flow through `--t3k-*` CSS
+  variables on the `.neural-amp-modeler` root; `theme='light'` is a second
+  token sheet. New tokens: `--t3k-link`, `--t3k-danger`, `--t3k-warning`,
+  `--t3k-font`, `--t3k-font-mono`, `--t3k-radius-sm`.
+
+### Fixed
+
+- Unmounting a player no longer stops playback owned by another player.
+- Switching to live input in one player no longer flips every player on the
+  page to live (and no longer lets a different player start monitoring).
+- Reconnecting a live input no longer reports itself as a disconnected
+  device: tearing down a stream detaches its `ended` listener first.
+- Height reporting no longer depends on `requestAnimationFrame`, which
+  browsers pause in offscreen iframes.
+
 ## 2.0.0
 
 Complete rewrite of the WASM engine and its JavaScript integration. The

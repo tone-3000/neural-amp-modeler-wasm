@@ -1,5 +1,10 @@
-import { Input, IR, Model } from '../types';
-type NonEmptyArray<T> = [T, ...T[]];
+import { Input, IR, Model, NO_IR, NonEmptyArray } from '../types';
+
+/**
+ * Demo fixtures: a small library of NAM A2 models, IRs and DI clips served
+ * from this repo. `npm start` serves them from /public; the published package
+ * points at the GitHub raw URLs so the README examples work out of the box.
+ */
 const inputs = [
   {
     name: 'Brit - Guitar',
@@ -140,56 +145,51 @@ const inputs = [
   },
 ];
 
-const irs = [
-  {
-    name: 'None',
-    url: '',
-    mix: 0,
-    gain: 1,
-  },
+const cabIrs: IR[] = [
+  NO_IR,
   {
     name: 'Mesa 412 OS',
     url: '/irs/mesa.wav',
     mix: 1,
-    gain: 3,
     default: true,
   },
   {
     name: 'Celestion G12 Vintage',
     url: '/irs/celestion.wav',
     mix: 1,
-    gain: 1.75,
   },
   {
     name: 'Eminence Governor',
     url: '/irs/eminence.wav',
     mix: 1,
-    gain: 3,
   },
   {
     name: 'Ampeg 8x10',
     url: '/irs/ampeg.wav',
     mix: 1,
-    gain: 1.25,
   },
+];
+
+const reverbIrs: IR[] = [
+  NO_IR,
   {
     name: 'EMT 140 Plate Reverb',
     url: '/irs/plate.wav',
     mix: 0.3,
-    gain: 1,
   },
   {
     name: 'Fender Spring Reverb',
     url: '/irs/spring.wav',
     mix: 0.35,
-    gain: 1,
   },
 ];
+
+const irs: IR[] = [...cabIrs, ...reverbIrs.slice(1)];
 
 const models = [
   {
     name: 'Fender Deluxe Reverb',
-    url: '/models/deluxe.nam',
+    url: '/models/deluxe-a2.nam',
     default: true,
   },
   {
@@ -220,6 +220,8 @@ const models = [
 
 const githubBaseUrl =
   'https://raw.githubusercontent.com/tone-3000/neural-amp-modeler-wasm/refs/heads/main/ui/public';
+// Replaced at build time (rollup `replace`, vite `define`); never read at runtime.
+declare const process: { env: { NODE_ENV?: string } };
 const isDev = process.env.NODE_ENV === 'development';
 
 export const DEFAULT_MODELS = (
@@ -231,14 +233,20 @@ export const DEFAULT_MODELS = (
       }))
 ) as NonEmptyArray<Model>;
 
-export const DEFAULT_IRS = (
-  isDev
-    ? irs
-    : irs.map(ir => ({
+const withBase = (list: IR[]) =>
+  (isDev
+    ? list
+    : list.map(ir => ({
         ...ir,
-        url: ir.url ? `${githubBaseUrl}${ir.url}` : '', // Empty string if no url
-      }))
-) as NonEmptyArray<IR>;
+        url: ir.url === null ? null : `${githubBaseUrl}${ir.url}`,
+      }))) as NonEmptyArray<IR>;
+
+/** Speaker cabinets (fully wet), "None" first. */
+export const DEFAULT_CAB_IRS = withBase(cabIrs);
+/** Reverbs (partial mix), "None" first. */
+export const DEFAULT_REVERB_IRS = withBase(reverbIrs);
+/** Cabs then reverbs: the whole demo IR library. */
+export const DEFAULT_IRS = withBase(irs);
 
 export const DEFAULT_INPUTS = (
   isDev
@@ -248,15 +256,3 @@ export const DEFAULT_INPUTS = (
         url: `${githubBaseUrl}${input.url}`,
       }))
 ) as NonEmptyArray<Input>;
-
-export const DEFAULT_AUDIO_SRC = isDev
-  ? '/inputs/placeholder.wav'
-  : githubBaseUrl + '/inputs/placeholder.wav';
-
-export const SOURCE_MODE_OPTIONS: Array<{
-  value: 'demo' | 'live';
-  label: string;
-}> = [
-  { value: 'demo', label: 'Demo' },
-  { value: 'live', label: 'Live' },
-];

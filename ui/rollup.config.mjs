@@ -5,6 +5,7 @@ import postcss from 'rollup-plugin-postcss';
 import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 import replace from '@rollup/plugin-replace';
+import terser from '@rollup/plugin-terser';
 
 // Main library, ESM. Two entries: the React components (index.esm) and the
 // framework-agnostic engine (engine/index). The engine is its own chunk in
@@ -15,6 +16,7 @@ const libraryEsm = {
   input: {
     'index.esm': 'src/index.ts',
     'engine/index': 'src/engine/index.ts',
+    'embed/index': 'src/embed/index.ts',
   },
   output: {
     dir: 'dist',
@@ -104,4 +106,26 @@ const worklet = {
   ],
 };
 
-export default [libraryEsm, libraryCjs, worklet];
+// Host-page embed script. Dependency-free IIFE so it can be dropped into any
+// page with a plain <script> tag; tone3000.com serves it at /embed.js.
+const embedHost = {
+  input: 'src/embed/host/embed.ts',
+  output: {
+    file: 'dist/embed.js',
+    format: 'iife',
+    sourcemap: false,
+  },
+  plugins: [
+    resolve(),
+    typescript({
+      tsconfig: './tsconfig.json',
+      declaration: false,
+      declarationDir: undefined,
+      outDir: undefined,
+      sourceMap: false,
+    }),
+    terser(),
+  ],
+};
+
+export default [libraryEsm, libraryCjs, worklet, embedHost];

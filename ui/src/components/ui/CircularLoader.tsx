@@ -7,7 +7,7 @@ type CircularLoaderProps = {
 
 export const CircularLoader: React.FC<CircularLoaderProps> = ({
   size = 40,
-  color = '#000',
+  color = 'var(--t3k-on-accent)',
 }) => {
   const circleSize = size - 20;
   const strokeWidth = 3;
@@ -16,7 +16,7 @@ export const CircularLoader: React.FC<CircularLoaderProps> = ({
 
   return (
     <div
-      className='flex items-center justify-center animate-spin bg-white rounded-full'
+      className='flex items-center justify-center animate-spin bg-accent rounded-full'
       style={{ width: size, height: size }}
     >
       <svg

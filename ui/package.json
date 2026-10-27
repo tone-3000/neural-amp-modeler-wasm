@@ -1,7 +1,7 @@
 {
   "name": "neural-amp-modeler-wasm",
-  "version": "2.0.1",
-  "description": "Neural Amp Modeler WebAssembly React Component",
+  "version": "3.0.0",
+  "description": "Neural Amp Modeler in the browser: WebAssembly engine, React player (mini / compact / full, playlists, live input) and an iframe embed bridge for partner sites",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -16,6 +16,11 @@
       "types": "./dist/engine/index.d.ts",
       "import": "./dist/engine/index.js"
     },
+    "./embed": {
+      "types": "./dist/embed/index.d.ts",
+      "import": "./dist/embed/index.js"
+    },
+    "./embed.js": "./dist/embed.js",
     "./styles.css": "./dist/styles.css",
     "./dist/styles.css": "./dist/styles.css",
     "./dist/engine/nam-worklet.js": "./dist/engine/nam-worklet.js",
@@ -23,21 +28,33 @@
   },
   "files": [
     "dist",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/tone-3000/neural-amp-modeler-wasm"
+    "url": "https://github.com/tone-3000/neural-amp-modeler-wasm",
+    "directory": "ui"
+  },
+  "bugs": {
+    "url": "https://github.com/tone-3000/neural-amp-modeler-wasm/issues"
   },
   "keywords": [
     "neural-amp-modeler",
+    "nam",
+    "tone3000",
     "guitar-amp",
+    "amp-sim",
+    "impulse-response",
     "webassembly",
+    "audioworklet",
     "react",
     "audio",
     "dsp",
     "web-audio",
-    "web-audio-api"
+    "web-audio-api",
+    "embed",
+    "iframe"
   ],
   "homepage": "https://github.com/tone-3000/neural-amp-modeler-wasm#readme",
   "scripts": {
@@ -47,10 +64,12 @@
     "clean": "rimraf dist",
     "prepare": "npm run clean && npm run build",
     "preview": "vite preview",
-    "start": "npm run build && rm -rf public/engine && cp -r dist/engine public/engine && vite",
+    "start": "npm run build && rm -rf public/engine && cp -r dist/engine public/engine && cp dist/embed.js public/embed.js && vite",
     "test:smoke": "node ../tools/smoke/nam-engine-smoke.mjs",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm run test:smoke"
   },
   "peerDependencies": {
     "react": "^18.0.0",
@@ -60,6 +79,7 @@
     "@rollup/plugin-commonjs": "^24.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
     "@rollup/plugin-replace": "^5.0.0",
+    "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^11.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
@@ -76,8 +96,8 @@
     "typescript": "^5.0.0",
     "vite": "^5.0.0"
   },
-  "author": "woodybury",
-  "license": "ISC",
+  "author": "TONE3000 (https://www.tone3000.com)",
+  "license": "MIT",
   "dependencies": {
     "lucide-react": "^0.513.0",
     "react-knob-headless": "^0.4.0"

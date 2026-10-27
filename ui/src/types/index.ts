@@ -1,35 +1,57 @@
 import { ReactNode } from 'react';
 
+/**
+ * A NAM A2 model: a `.nam` file in the `SlimmableContainer` format, holding
+ * one or more submodels at different sizes. The player loads nothing else.
+ * Which submodel runs is chosen by `T3kPlayerProps.slimSize`.
+ */
 export interface Model {
   name: string;
-  url: string;
+  /** `null` is the explicit "no model" option: the slot passes through. */
+  url: string | null;
+  /** Selected first. Falls back to the first entry when none is marked. */
   default?: boolean;
 }
 
+/** The "no model" entry, for slots that should offer a pass-through. */
+export const NO_MODEL: Model = { name: 'None', url: null };
+
+/**
+ * An impulse response. `url: null` is the explicit "no cabinet" option.
+ * Level is not a property: every IR is gain-staged to unity in-band
+ * response when it loads, so cabs and reverbs sit at the model's level.
+ */
 export interface IR {
   name: string;
-  url: string;
+  url: string | null;
+  /**
+   * Wet/dry mix in [0, 1]. Omit for the engine's rule (the one the TONE3000
+   * plugin uses): IRs longer than a second are treated as reverbs and start
+   * at 0.5, shorter ones as cabs at 1. Any IR that isn't fully wet shows a
+   * mix knob in the controls.
+   */
   mix?: number;
-  gain?: number;
   default?: boolean;
 }
 
+/** A DI recording the demo plays through the model. */
 export interface Input {
   name: string;
   url: string;
   default?: boolean;
 }
 
-export enum PREVIEW_MODE {
-  MODEL = 'model',
-  IR = 'ir',
-}
+/** The "no cabinet" IR, for asset lists that should offer a dry option. */
+export const NO_IR: IR = { name: 'None', url: null, mix: 0 };
+
+/** Which select is primary in the controls: the NAM model or the IR. */
+export type PreviewMode = 'model' | 'ir';
 
 // Source mode for players: 'demo' uses file playback, 'live' uses direct input
 export type SourceMode = 'demo' | 'live';
 
-// Channel selection for multi-channel audio interfaces
-export type ChannelSelection = 'first' | 'second';
+/** Input channel of a multi-channel audio interface, 0-based. */
+export type ChannelSelection = number;
 
 // What audio source is currently active (connected to the audio engine)
 export type InputMode =
@@ -37,13 +59,17 @@ export type InputMode =
   | { type: 'connecting' }
   | { type: 'live' };
 
-// Configured live input settings (persists even when demo is active)
-// This allows the UI to show the configured device even when file playback is active
+/**
+ * The configured live input. Kept after switching back to demo so the UI can
+ * show the device and reconnect to it without asking again.
+ */
 export interface LiveInputConfig {
   deviceId: string;
+  /** Channels the browser actually delivers for this device. */
   channelCount: number;
-  selectedChannel: ChannelSelection;
-  channelGains: Record<ChannelSelection, number>;
+  channel: ChannelSelection;
+  /** Input gain per channel, in dB (indexed by channel). */
+  gainsDb: number[];
 }
 
 export interface AudioInputDevice {
@@ -54,16 +80,6 @@ export interface AudioInputDevice {
 export interface AudioOutputDevice {
   deviceId: string;
   label: string;
-}
-
-// State of the global settings dialog (managed by context)
-export interface SettingsDialogState {
-  isOpen: boolean;
-  sourceMode: SourceMode;
-  playerId?: string;
-  selectedModel?: Model;
-  selectedIr?: IR;
-  onMonitoringChange: (enabled: boolean) => void | Promise<void>;
 }
 
 // Microphone permission state (permission concerns only)
@@ -100,146 +116,217 @@ export interface AudioOutputDeviceState {
   selectedDeviceId: string | null; // null means system default
 }
 
-// All Web Audio API node references managed by the audio engine
-export interface AudioNodes {
-  audioContext: AudioContext | null;
-  audioElement: HTMLAudioElement | null;
-  audioWorkletNode: AudioWorkletNode | null;
-  inputGainNode: GainNode | null;
-  outputGainNode: GainNode | null;
-  bypassNode: GainNode | null;
-  irNode: ConvolverNode | null;
-  irWetGain: GainNode | null;
-  irDryGain: GainNode | null;
-  irGain: GainNode | null;
-  sourceNode: MediaElementAudioSourceNode | null;
-  // Live input nodes
-  liveSourceNode: MediaStreamAudioSourceNode | null;
-  liveInputGainNode: GainNode | null;
-  mediaStream: MediaStream | null;
-  // Metering nodes
-  inputMeterNode: AnalyserNode | null;
-  outputMeterNode: AnalyserNode | null;
-  // Channel selection (for multi-channel interfaces)
-  channelSplitterNode: ChannelSplitterNode | null;
-  channelMergerNode: ChannelMergerNode | null;
-  channel0LiveMeter: AnalyserNode | null;
-  channel1LiveMeter: AnalyserNode | null;
-  // Output device routing workaround (Firefox/Safari don't support AudioContext.setSinkId)
-  outputWorkaroundDestination: MediaStreamAudioDestinationNode | null;
-  outputWorkaroundElement: HTMLAudioElement | null;
-}
-
-// Explicit initialization states for visibility into the init process
+/** Nothing is created or fetched until the first user gesture (`initializing`). */
 export type AudioInitState = 'uninitialized' | 'initializing' | 'ready';
 
+/** Engine state shared by every player under one provider. */
 export interface AudioState {
   initState: AudioInitState;
-  isPlaying: boolean; // Whether audio is playing (demo) or monitoring (live)
-  activePlayerId: string | null; // Which player is currently controlling playback
+  /** Demo playing or live monitoring. */
+  isPlaying: boolean;
+  /** `${playerId}:${toneId}` of the player driving the engine. */
+  activePlayerId: string | null;
   isBypassed: boolean;
   modelUrl: string | null;
+  preModelUrl: string | null;
   irUrl: string | null;
+  /** Current wet/dry of the IR slot. */
+  irMix: number;
+  /** The loaded IR isn't meant to be fully wet (reverb, long tail). */
+  irReverbLike: boolean;
   audioUrl: string | null;
-  // What audio source is currently active (connected to audio engine)
+  /** Which source feeds the engine right now. */
   inputMode: InputMode;
-  // Configured live input settings (persists even when demo is active)
-  // This allows UI to show configured device while another player uses file playback
   liveInputConfig: LiveInputConfig | null;
 }
 
-export interface IrConfig {
-  url: string;
-  mix?: number;
-  gain?: number;
+export type NonEmptyArray<T> = [T, ...T[]];
+
+// ---------------------------------------------------------------------------
+// Player data contract (v3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Captions for the three selects. Defaults follow the tone3000 vocabulary:
+ * the primary select is "NAM Capture" (or "Impulse Response (IR)" when
+ * `previewMode` is `'ir'`), the paired one is "Cab" / "Amp", and the DI
+ * track is "Input".
+ */
+export interface AssetLabels {
+  model?: string;
+  ir?: string;
+  input?: string;
+  /** Caption for the `preModels` select. Defaults to "Amp". */
+  preModel?: string;
 }
 
-// Default initial value for AudioNodes ref (all null)
-export const EMPTY_AUDIO_NODES: AudioNodes = {
-  audioContext: null,
-  audioElement: null,
-  audioWorkletNode: null,
-  inputGainNode: null,
-  outputGainNode: null,
-  bypassNode: null,
-  irNode: null,
-  irWetGain: null,
-  irDryGain: null,
-  irGain: null,
-  sourceNode: null,
-  liveSourceNode: null,
-  liveInputGainNode: null,
-  mediaStream: null,
-  inputMeterNode: null,
-  outputMeterNode: null,
-  channelSplitterNode: null,
-  channelMergerNode: null,
-  channel0LiveMeter: null,
-  channel1LiveMeter: null,
-  outputWorkaroundDestination: null,
-  outputWorkaroundElement: null,
-};
+/**
+ * Everything the engine needs to play a tone. May be resolved lazily.
+ *
+ * The chain is fixed: `input → preModels? → models → irs`. The tone fills
+ * one slot (`previewMode`); the controls show exactly one companion select
+ * next to it — `preModels` when given, otherwise the other of model / IR.
+ */
+export interface PlayerAssets {
+  models: NonEmptyArray<Model>;
+  irs: NonEmptyArray<IR>;
+  inputs: NonEmptyArray<Input>;
+  /**
+   * A NAM in front of `models`: an amp driving a cabinet capture. When set
+   * it becomes the companion select, so keep `irs` to one fixed entry
+   * (usually `[NO_IR]`). Only meaningful with `previewMode: 'model'`.
+   */
+  preModels?: NonEmptyArray<Model>;
+  /** Which select is primary. Defaults to `'model'`. */
+  previewMode?: PreviewMode;
+  labels?: AssetLabels;
+}
 
-// Utility type to ensure non-empty arrays
-type NonEmptyArray<T> = [T, ...T[]];
+/** Presentation data about a tone. Omit entirely to render a bare player. */
+export interface ToneMeta {
+  title: string;
+  imageUrl?: string;
+  /**
+   * Fills the image square when there's no `imageUrl` — tone3000 passes its
+   * gear icon on a tinted background. Defaults to a plain surface.
+   */
+  imageFallback?: ReactNode;
+  /** Link for the title / image. Opens in a new tab when `linkTarget` is `_blank`. */
+  href?: string;
+  /** One line under the title, e.g. `'Amp Head Capture'`. Plain muted text. */
+  subtitle?: string;
+  /** File format, rendered as the TONE3000 pill (`'NAM'`, `'IR'`). */
+  format?: string;
+  author?: {
+    name: string;
+    /** Image, or the TONE3000 silhouette when absent. */
+    avatarUrl?: string;
+    href?: string;
+    /** Shows the TONE3000 verified check after the name. */
+    verified?: boolean;
+  };
+}
+
+export interface PlayerTone {
+  /** Stable and unique within one player. Also used as the React key. */
+  id: string;
+  meta?: ToneMeta;
+  /** Eager assets, or a thunk that resolves them on first use. */
+  assets: PlayerAssets | (() => Promise<PlayerAssets>);
+}
+
+/**
+ * - `mini`: a play/pause button and nothing else.
+ * - `compact`: playbar; controls collapsed behind a toggle. Full player minus
+ *   the tone header (playlists keep a dense header for the pager).
+ * - `full`: tone header + playbar + controls, always expanded.
+ */
+export type PlayerLayout = 'mini' | 'compact' | 'full';
+
+/** Both themes ship as token sheets; `dark` is the default. */
+export type PlayerTheme = 'dark' | 'light';
+
+/** Which panel the body shows. `settings` is Live-only. */
+export type PlayerView = 'controls' | 'settings';
+
+/** The selections that fully describe what a tone is playing. */
+export interface Selection {
+  model: Model;
+  ir: IR;
+  input: Input;
+  /** Only when the assets have `preModels`. */
+  preModel?: Model;
+  /** User-set wet/dry for `ir`, overriding its default. Cleared when `ir` changes. */
+  mix?: number;
+}
+
+/**
+ * Single event stream for every surface. Hosts subscribe once via `onEvent`;
+ * the embed bridge forwards these verbatim to the parent page.
+ */
+export type PlayerEvent =
+  | { type: 'ready' }
+  | {
+      type: 'play';
+      mode: SourceMode;
+      toneId: string;
+      selection: Selection;
+      /** Live mode only: configured device label. */
+      device?: string | null;
+    }
+  | { type: 'pause'; toneId: string }
+  | { type: 'ended'; toneId: string }
+  | { type: 'tone_change'; toneId: string }
+  | {
+      type: 'selection_change';
+      toneId: string;
+      field: 'model';
+      value: Model;
+    }
+  | { type: 'selection_change'; toneId: string; field: 'ir'; value: IR }
+  | { type: 'selection_change'; toneId: string; field: 'input'; value: Input }
+  | {
+      type: 'selection_change';
+      toneId: string;
+      field: 'preModel';
+      value: Model;
+    }
+  | { type: 'selection_change'; toneId: string; field: 'mix'; value: number }
+  | { type: 'bypass_change'; bypassed: boolean }
+  | { type: 'source_change'; mode: SourceMode }
+  | { type: 'view_change'; view: PlayerView }
+  | { type: 'expand' }
+  | { type: 'collapse' }
+  | { type: 'resize'; height: number }
+  | {
+      type: 'error';
+      toneId?: string;
+      code: 'assets' | 'model' | 'ir' | 'audio' | 'engine';
+      message: string;
+    };
 
 export interface T3kPlayerProps {
-  models?: NonEmptyArray<Model>;
-  irs?: NonEmptyArray<IR>;
-  inputs?: NonEmptyArray<Input>;
-  isLoading?: boolean;
-  previewMode?: PREVIEW_MODE;
-  // Raw NAM-core slimmable size in [0.0, 1.0] applied to slimmable (A2)
-  // models: NAM core selects the first submodel whose max_value is greater
-  // than this value (e.g. with thresholds [0.5, 1.0], values below 0.5 select
-  // the smaller submodel). Omit to run models at full size. Non-slimmable
-  // models silently ignore it.
+  /** One tone renders the single-tone player; two or more render a playlist. */
+  tones: NonEmptyArray<PlayerTone>;
+  /** Defaults to `'full'`. Playlists do not support `'mini'`. */
+  layout?: PlayerLayout;
+  /** `compact` only: start expanded. */
+  defaultExpanded?: boolean;
+  /** Playlist only: which tone is active first. Defaults to the first tone. */
+  defaultToneId?: string;
+  /**
+   * Show the Demo / Live source toggle. Set `false` where live input isn't
+   * available (embeds, plugin webviews). Defaults to `true`.
+   */
+  live?: boolean;
+  /**
+   * Raw NAM-core slimmable size in [0.0, 1.0] applied to slimmable (A2)
+   * models: NAM core selects the first submodel whose max_value is greater
+   * than this value (e.g. with thresholds [0.5, 1.0], values below 0.5 select
+   * the smaller submodel). Omit to run models at full size. Non-slimmable
+   * models silently ignore it.
+   */
   slimSize?: number;
-  // When true, the player renders in a disabled state regardless of model contents.
-  disabled?: boolean;
-  // When true, hide the Live source-mode toggle and pin the player to Demo
-  // playback. Use where live input isn't available/wanted, e.g. the in-flow
-  // preview player inside the plugin webview, where mic capture and audio
-  // routing aren't supported. Defaults to false (Demo + Live both shown).
-  demoOnly?: boolean;
-  onPlayDemo?: ({
-    model,
-    ir,
-    input,
-  }: {
-    model: Model;
-    ir: IR;
-    input: Input;
-  }) => void;
-  onPlayLive?: ({
-    model,
-    ir,
-    device,
-  }: {
-    model: Model;
-    ir: IR;
-    device: string | null;
-  }) => void;
-  onModelChange?: (model: Model) => void;
-  onInputChange?: (input: Input) => void;
-  onIrChange?: (ir: IR) => void;
-  id?: string;
-  infoSlot?: ReactNode;
-}
-
-export interface T3kSlimPlayerProps extends T3kPlayerProps {
-  getData: () => Promise<{
-    model: Model;
-    ir: IR;
-    input: Input;
-  }>;
+  /** Render disabled. Pass an object to show a reason beside the controls. */
+  disabled?: boolean | { reason?: string };
+  /** Render the skeleton state. */
+  isLoading?: boolean;
+  /** Defaults to `'dark'`. */
+  theme?: PlayerTheme;
+  /** Rendered at the right end of the playbar (e.g. an info button). */
+  headerSlot?: ReactNode;
+  /** Show the "Powered by TONE3000" link. Defaults to `true`. */
+  attribution?: boolean;
+  /** `_blank` for embeds (default), `_self` for in-app. Applies to meta links. */
+  linkTarget?: '_blank' | '_self';
+  /**
+   * `compact` / `full`: drop the top border and radius so the panel docks
+   * flush under a host card (tone3000 search results).
+   */
+  docked?: boolean;
+  /** `mini` only: button diameter in px. Defaults to 40. */
   size?: number;
-}
-
-export interface T3kAcordianPlayerProps extends T3kPlayerProps {
-  getData: () => Promise<{
-    models: NonEmptyArray<Model>;
-    irs: NonEmptyArray<IR>;
-    inputs: NonEmptyArray<Input>;
-  }>;
+  /** Stable id for this player instance. Generated when omitted. */
+  id?: string;
+  onEvent?: (event: PlayerEvent) => void;
 }

@@ -38,14 +38,14 @@ export const Radio: React.FC<RadioProps> = ({
           transition-colors duration-150
           ${
             checked
-              ? 'border border-white bg-transparent'
-              : 'border border-zinc-500 bg-transparent'
+              ? 'border border-fg bg-transparent'
+              : 'border border-line-strong bg-transparent'
           }
           ${disabled ? 'opacity-50' : ''}
         `}
         aria-hidden
       >
-        {checked && <span className='w-3 h-3 rounded-full bg-white' />}
+        {checked && <span className='w-3 h-3 rounded-full bg-accent' />}
       </span>
       <input
         type='radio'
@@ -57,7 +57,7 @@ export const Radio: React.FC<RadioProps> = ({
         className='sr-only'
         {...props}
       />
-      {label != null && <span className='text-sm text-zinc-300'>{label}</span>}
+      {label != null && <span className='text-sm text-muted-2'>{label}</span>}
     </>
   );
 

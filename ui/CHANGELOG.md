@@ -38,7 +38,7 @@ Also breaking, from the second pass over v3:
 
 - **NAM A2 only.** `AudioGraph.loadModel` rejects anything that is not a
   `SlimmableContainer` (surfaces as an `error` event on play). The bundled demo
-  models were re-captured as A2 on TONE3000 (see `public/models/README.md`).
+  models are all A2.
 - **`IR.url` is `string | null`** (`null` = no cabinet; `NO_IR` is exported).
   `IR.gainDb` is gone: IRs are gain-staged automatically to unity in-band
   response on load (TONE3000 pedal convention), `ConvolverNode.normalize` is

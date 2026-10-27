@@ -157,11 +157,11 @@ const tones = DEFAULT_MODELS.map(model => ({
 }));
 ```
 
-| Models (NAM A2)                                                                                                                   | Cab IRs                                                                      | Reverb IRs                                         |
-| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------- |
-| Fender Deluxe Reverb, Marshall JCM, Vox AC10, Dumble Overdrive Special, Ampeg V-2, Boosted EVH 5153 (by @pippress), Roland JC-120 | Mesa 412 OS, Celestion G12 Vintage, Eminence Governor, Ampeg 8x10 (`mix: 1`) | EMT 140 Plate (`mix: 0.3`), Fender Spring (`0.35`) |
+| Models (NAM A2)                                                                                                                      | Cab IRs                                                                      | Reverb IRs                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------- |
+| Fender Deluxe Reverb, Marshall JCM800, Vox AC10, Dumble Overdrive Special, Ampeg V-2, Boosted EVH 5153 (by @pippress), Roland JC-120 | Mesa 412 OS, Celestion G12 Vintage, Eminence Governor, Ampeg 8x10 (`mix: 1`) | EMT 140 Plate (`mix: 0.3`), Fender Spring (`0.35`) |
 
-`DEFAULT_INPUTS` is 34 guitar and bass DI tracks (20–30 s, 48 kHz mono). Every bundled model is an A2 `SlimmableContainer` with `loudness` metadata, re-captured on TONE3000 from the original A1 models; the ESR of each against its A1 is in [`public/models/README.md`](https://github.com/tone-3000/neural-amp-modeler-wasm/blob/main/ui/public/models/README.md), along with how to contribute models, [IRs](https://github.com/tone-3000/neural-amp-modeler-wasm/blob/main/ui/public/irs/README.md) and [inputs](https://github.com/tone-3000/neural-amp-modeler-wasm/blob/main/ui/public/inputs/README.md).
+`DEFAULT_INPUTS` is 34 guitar and bass DI tracks (20–30 s, 48 kHz mono). Every bundled model is an A2 `SlimmableContainer` with `loudness` metadata. See [`public/models/README.md`](https://github.com/tone-3000/neural-amp-modeler-wasm/blob/main/ui/public/models/README.md) for how to contribute models, [IRs](https://github.com/tone-3000/neural-amp-modeler-wasm/blob/main/ui/public/irs/README.md) and [inputs](https://github.com/tone-3000/neural-amp-modeler-wasm/blob/main/ui/public/inputs/README.md).
 
 ## Layouts
 

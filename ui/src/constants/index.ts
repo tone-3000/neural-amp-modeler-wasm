@@ -193,7 +193,7 @@ const models = [
     default: true,
   },
   {
-    name: 'Marshall JCM',
+    name: 'Marshall JCM800',
     url: '/models/jcm.nam',
   },
   {

@@ -5,25 +5,20 @@ This directory contains Neural Amp Modeler (NAM) model files for amp and pedal s
 ## Bundled demo models
 
 The player loads **NAM A2** files only (`SlimmableContainer`, two sizes: 0.5
-and 1.0, with `loudness` metadata). The bundled demos were originally A1
-captures; they were migrated by reamping the
-[TONE3000 sweep v3](https://www.tone3000.com/T3K-sweep-v3.wav) through each
-A1 model and re-capturing the result as A2 on [TONE3000](https://www.tone3000.com).
-Measured against the original A1 on a real DI (gain-matched, since the engine
-normalizes loudness-aware models to −18 dB):
+and 1.0, with `loudness` metadata).
 
-| File            | Gear                     | ESR vs A1 (full / slim) |
-| --------------- | ------------------------ | ----------------------- |
-| `deluxe-a2.nam` | Fender Deluxe Reverb     | 0.0035 / 0.013          |
-| `jcm.nam`       | Marshall JCM             | 0.0024 / 0.0081         |
-| `ac10.nam`      | Vox AC10                 | 0.0014 / 0.0065         |
-| `dumble.nam`    | Dumble Overdrive Special | 0.0004 / 0.0007         |
-| `ampeg.nam`     | Ampeg V-2                | 0.0008 / 0.0027         |
-| `5153.nam`      | Boosted EVH 5153         | 0.0093 / 0.035          |
-| `jc.nam`        | Roland JC-120            | 0.00005 / 0.0002        |
+| File            | Gear                     |
+| --------------- | ------------------------ |
+| `deluxe-a2.nam` | Fender Deluxe Reverb     |
+| `jcm.nam`       | Marshall JCM800          |
+| `ac10.nam`      | Vox AC10                 |
+| `dumble.nam`    | Dumble Overdrive Special |
+| `ampeg.nam`     | Ampeg V-2                |
+| `5153.nam`      | Boosted EVH 5153         |
+| `jc.nam`        | Roland JC-120            |
 
-`deluxe.nam` is the original A1 Deluxe Reverb, kept only as the legacy-format
-fixture for `tools/smoke` (the player rejects it).
+`deluxe.nam` is a legacy A1 file kept only as the fixture for `tools/smoke`
+(the player rejects it).
 
 ## Contributing Model Files
 
@@ -35,7 +30,7 @@ Please ensure your contributions meet the following specifications:
 
 - **Format**: `.nam` file
 - **Architecture**: NAM A2 (`SlimmableContainer`). Legacy single-architecture
-  files (WaveNet, LSTM, ConvNet) must be re-captured first — see above.
+  files (WaveNet, LSTM, ConvNet) are rejected by the player.
 - **Training**: Models should be properly trained and tested for quality
 - **Naming**: Use descriptive filenames that indicate the gear being modeled
 

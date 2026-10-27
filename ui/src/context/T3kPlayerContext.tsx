@@ -20,6 +20,7 @@ import {
   ChannelSelection,
   IR,
   MicrophonePermissionState,
+  SourceMode,
 } from '../types';
 
 /**
@@ -47,6 +48,14 @@ export interface T3kPlayerContextType {
   microphonePermission: MicrophonePermissionState;
   audioInputDevices: AudioInputDeviceState;
   audioOutputDevices: AudioOutputDeviceState;
+
+  /**
+   * Sample vs live, shared by every player under the provider: switching one
+   * player to "Plug in and play" switches the page. `owner` is the player
+   * that made the switch — the one that auto-connects and starts monitoring.
+   */
+  source: { mode: SourceMode; owner: string | null };
+  setSourceMode: (mode: SourceMode, playerId: string) => void;
 
   /** The graph once `init()` has resolved. For meter and visualizer taps. */
   getGraph: () => AudioGraph | null;
@@ -112,6 +121,13 @@ export function T3kPlayerContextProvider({
   engineAssets?: NamEngineAssets;
 }) {
   const [audioState, setAudioState] = useState<AudioState>(INITIAL_AUDIO_STATE);
+  const [source, setSource] = useState<T3kPlayerContextType['source']>({
+    mode: 'demo',
+    owner: null,
+  });
+  const setSourceMode = useCallback((mode: SourceMode, playerId: string) => {
+    setSource(prev => (prev.mode === mode ? prev : { mode, owner: playerId }));
+  }, []);
   /** Last configured device, readable from callbacks without a stale closure. */
   const liveConfigRef = useRef(audioState.liveInputConfig);
   liveConfigRef.current = audioState.liveInputConfig;
@@ -392,6 +408,8 @@ export function T3kPlayerContextProvider({
       microphonePermission,
       audioInputDevices,
       audioOutputDevices,
+      source,
+      setSourceMode,
       getGraph,
       init,
       sync,
@@ -416,6 +434,8 @@ export function T3kPlayerContextProvider({
       microphonePermission,
       audioInputDevices,
       audioOutputDevices,
+      source,
+      setSourceMode,
       getGraph,
       init,
       sync,
@@ -458,6 +478,8 @@ function createNoopContext(): T3kPlayerContextType {
       preferredDeviceId: null,
     },
     audioOutputDevices: { devices: [], selectedDeviceId: null },
+    source: { mode: 'demo', owner: null },
+    setSourceMode: noop,
     getGraph: () => null,
     init: () => Promise.reject(new Error('No audio on the server')),
     sync: resolve,

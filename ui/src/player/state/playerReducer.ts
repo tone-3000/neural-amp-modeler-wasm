@@ -6,7 +6,6 @@ import {
   PlayerTone,
   PlayerView,
   Selection,
-  SourceMode,
 } from '../../types';
 import { getDefault } from '../../utils/player';
 
@@ -24,13 +23,11 @@ export interface PlayerState {
   activeToneId: string;
   /** `compact` layout only. `full` pins it to true; `mini` ignores it. */
   expanded: boolean;
-  /** Which body the panel shows; `settings` is Live-only. */
-  view: PlayerView;
   /**
-   * Sample vs. plug-in tab. Per player: several players on one page can sit
-   * on different tabs; the engine only cares who is playing right now.
+   * Which body the panel shows; `settings` is Live-only. (The Sample / Plug
+   * in and play tab itself is page-wide and lives in the context.)
    */
-  sourceMode: SourceMode;
+  view: PlayerView;
   bypassed: boolean;
   assets: Record<string, AssetsStatus>;
   /** Per tone, seeded from its assets' defaults the first time they resolve. */
@@ -67,8 +64,7 @@ export type PlayerAction =
   | { type: 'selection/set'; toneId: string; field: 'mix'; value: number }
   | { type: 'bypass/set'; bypassed: boolean }
   | { type: 'expanded/set'; expanded: boolean }
-  | { type: 'view/set'; view: PlayerView }
-  | { type: 'source/set'; mode: SourceMode };
+  | { type: 'view/set'; view: PlayerView };
 
 const statusFor = (tone: PlayerTone): AssetsStatus =>
   typeof tone.assets === 'function'
@@ -122,7 +118,6 @@ export function createInitialState(
     activeToneId,
     expanded: options.defaultExpanded ?? false,
     view: 'controls',
-    sourceMode: 'demo',
     bypassed: false,
     assets,
     selection,
@@ -241,10 +236,6 @@ export function playerReducer(
         ? state
         : { ...state, expanded: action.expanded };
 
-    case 'source/set':
-      return state.sourceMode === action.mode
-        ? state
-        : { ...state, sourceMode: action.mode, view: 'controls' };
     case 'view/set':
       return state.view === action.view
         ? state

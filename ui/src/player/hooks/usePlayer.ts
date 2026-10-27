@@ -180,8 +180,12 @@ export function usePlayer(options: Options): PlayerController {
     connectVisualizer,
     reconnectLiveInput,
     stopLiveInput,
+    source,
+    setSourceMode: setSharedSourceMode,
   } = useT3kPlayerContext();
-  const sourceMode: SourceMode = options.live ? state.sourceMode : 'demo';
+  // Sample vs live is page-wide (see the context): every player under the
+  // provider shows the same tab, like the v2 player did.
+  const sourceMode: SourceMode = options.live ? source.mode : 'demo';
 
   // ---- Derived -------------------------------------------------------------
   const activeIndex = Math.max(
@@ -725,11 +729,10 @@ export function usePlayer(options: Options): PlayerController {
   const setSourceMode = useCallback(
     async (mode: SourceMode) => {
       if (mode === sourceMode) return;
-      // Switching tabs stops this player's own playback; another player's
-      // demo or monitoring is not ours to interrupt.
-      if (isAnyTonePlaying) setPlaying(false);
-      dispatch({ type: 'source/set', mode });
-      emit({ type: 'source_change', mode });
+      // The whole page changes source, so whatever is playing (a demo or
+      // live monitoring, in any player) stops; its owner emits the `pause`.
+      if (audioState.activePlayerId) setPlaying(false);
+      setSharedSourceMode(mode, playerId);
       if (mode === 'live' && getGraph()) {
         try {
           await reconnectLiveInput();
@@ -740,14 +743,25 @@ export function usePlayer(options: Options): PlayerController {
     },
     [
       sourceMode,
-      isAnyTonePlaying,
+      audioState.activePlayerId,
       setPlaying,
-      emit,
+      setSharedSourceMode,
+      playerId,
       getGraph,
       reconnectLiveInput,
       fail,
     ]
   );
+
+  // Every player reports the page-wide switch and drops back to its controls
+  // (a settings view open in one player shouldn't survive a tab change).
+  const prevSourceModeRef = useRef(sourceMode);
+  useEffect(() => {
+    if (prevSourceModeRef.current === sourceMode) return;
+    prevSourceModeRef.current = sourceMode;
+    dispatch({ type: 'view/set', view: 'controls' });
+    emit({ type: 'source_change', mode: sourceMode });
+  }, [sourceMode, emit]);
 
   // Live setup (permission → interface) and auto-monitor once connected.
   const startMonitoring = useCallback(async () => {
@@ -760,8 +774,10 @@ export function usePlayer(options: Options): PlayerController {
     }
   }, [ensureTone, startLive, fail]);
 
+  // Only the player that switched the page to live auto-connects (and so
+  // starts monitoring); the others pick up the shared interface config.
   const live = useLiveSetup({
-    enabled: sourceMode === 'live',
+    enabled: sourceMode === 'live' && source.owner === playerId,
     onConnected: startMonitoring,
   });
 

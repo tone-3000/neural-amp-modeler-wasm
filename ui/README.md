@@ -171,7 +171,7 @@ const tones = DEFAULT_MODELS.map(model => ({
 | `compact` | Playbar; controls behind a toggle. Header only for playlists (pager). | yes      |
 | `full`    | Tone header + playbar + controls, always expanded.                    | yes      |
 
-Every panel is one stack: source tabs ("Sample" / "Plug in and play") with the attribution, tone header, playbar, then the body. The body shows the controls, or — on the live tab — the connect flow (permission, device discovery, per-browser unblock steps) and the inline audio settings (interface, output, input channel with meters). There is no dialog.
+Every panel is one stack: source tabs ("Sample" / "Plug in and play") with the attribution, tone header, playbar, then the body. The source tab is shared by every player under one `T3kPlayerProvider`: switching one player to live switches the page (and stops whatever was playing), so a connected interface works in every player without configuring each one. The body shows the controls, or — on the live tab — the connect flow (permission, device discovery, per-browser unblock steps) and the inline audio settings (interface, output, input channel with meters). There is no dialog.
 
 `compact` with `docked` drops the top radius and border so it sits flush under a host card (the tone3000 search card pattern). `mini` with more than one tone falls back to `compact` with a console warning.
 

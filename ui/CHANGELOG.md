@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.1
+
+### Fixed
+
+- The Sample / Plug in and play tab is page-wide again, as in v2. 3.0.0 made
+  it per player, so a page with several players had to be switched to live
+  one at a time. Now every player under one `T3kPlayerProvider` follows the
+  switch (and emits `source_change`), whatever was playing stops, and only
+  the player that made the switch auto-connects the interface and starts
+  monitoring; once connected, the shared interface is live in all of them.
+- The bundled `jcm.nam` is a new, higher-gain Marshall JCM800 capture, and
+  its label reads "Marshall JCM800".
+
 ## 3.0.0
 
 One player component for every surface. v2 shipped three components

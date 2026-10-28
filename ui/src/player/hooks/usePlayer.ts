@@ -778,7 +778,9 @@ export function usePlayer(options: Options): PlayerController {
     emit({ type: 'source_change', mode: sourceMode });
   }, [sourceMode, emit]);
 
-  // Live setup (permission → interface) and auto-monitor once connected.
+  // Live setup (permission → interface). Monitoring starts when the user
+  // picks an interface, not on the first automatic connection (see
+  // useLiveSetup.onConnected): until then the input stays muted.
   const startMonitoring = useCallback(async () => {
     const toneId = stateRef.current.activeToneId;
     try {
@@ -789,8 +791,8 @@ export function usePlayer(options: Options): PlayerController {
     }
   }, [ensureTone, startLive, fail]);
 
-  // Only the player that switched the page to live auto-connects (and so
-  // starts monitoring); the others pick up the shared interface config.
+  // Only the player that switched the page to live auto-connects; the others
+  // pick up the shared interface config.
   const live = useLiveSetup({
     enabled: sourceMode === 'live' && source.owner === playerId,
     onConnected: startMonitoring,

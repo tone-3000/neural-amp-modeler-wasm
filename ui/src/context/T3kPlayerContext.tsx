@@ -52,7 +52,7 @@ export interface T3kPlayerContextType {
   /**
    * Sample vs live, shared by every player under the provider: switching one
    * player to "Plug in and play" switches the page. `owner` is the player
-   * that made the switch — the one that auto-connects and starts monitoring.
+   * that made the switch — the one that runs the connect flow.
    */
   source: { mode: SourceMode; owner: string | null };
   setSourceMode: (mode: SourceMode, playerId: string) => void;

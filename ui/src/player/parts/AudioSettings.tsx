@@ -114,7 +114,9 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({
     );
   }
 
-  const noDevices = live.devices.length === 0 && !connecting;
+  // Only after an enumeration came back empty — not merely "list still
+  // empty", which is also true for a tick after the permission prompt.
+  const noDevices = live.status === 'no-device';
 
   return (
     <div className='flex flex-col gap-5'>

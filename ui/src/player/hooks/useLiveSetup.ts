@@ -40,7 +40,13 @@ export interface LiveSetup {
 interface Options {
   /** Run the flow (the Live tab is showing). */
   enabled: boolean;
-  /** Called after an interface connects, so the caller can start monitoring. */
+  /**
+   * Called after the user picks an interface, so the caller can start
+   * monitoring. Not called for the first automatic connection: the browser
+   * hands us whatever input it considers default — often the laptop mic —
+   * and unmuting that into the speakers is a feedback loop. Choosing a
+   * device is the signal that it's safe to hear it.
+   */
   onConnected?: () => void | Promise<void>;
 }
 
@@ -76,10 +82,11 @@ export function useLiveSetup({ enabled, onConnected }: Options): LiveSetup {
   /**
    * Enumerate, then start `deviceId` (or the preferred / first interface).
    * Always enumerates: right after the permission prompt the device list is
-   * still empty, and the settings panel needs it populated.
+   * still empty, and the settings panel needs it populated. `chosen` means
+   * the user picked this device, which is what starts monitoring.
    */
   const connectDevice = useCallback(
-    async (deviceId?: string): Promise<void> => {
+    async (deviceId?: string, chosen = false): Promise<void> => {
       setConnectionError(null);
       setBusy(true);
       try {
@@ -97,7 +104,7 @@ export function useLiveSetup({ enabled, onConnected }: Options): LiveSetup {
           known(preferredDeviceId) ??
           inputDevices[0].deviceId;
         await startLiveInput(id);
-        await onConnectedRef.current?.();
+        if (chosen) await onConnectedRef.current?.();
       } catch (error) {
         setConnectionError(
           error instanceof DOMException
@@ -122,16 +129,25 @@ export function useLiveSetup({ enabled, onConnected }: Options): LiveSetup {
   const connect = useCallback(
     () =>
       runOnce(async () => {
-        if (permission !== 'granted') {
-          let preferred: string | null;
-          try {
-            preferred = await requestMicrophonePermission();
-          } catch {
-            return; // status/error are in microphonePermission
+        // Busy for the whole sequence. Permission flips to 'granted' a tick
+        // before connectDevice runs; without this the panel renders that
+        // tick as "granted, idle, no devices" — a flash of "No audio
+        // interface found" right after the prompt.
+        setBusy(true);
+        try {
+          if (permission !== 'granted') {
+            let preferred: string | null;
+            try {
+              preferred = await requestMicrophonePermission();
+            } catch {
+              return; // status/error are in microphonePermission
+            }
+            await connectDevice(preferred ?? undefined);
+          } else {
+            await connectDevice();
           }
-          await connectDevice(preferred ?? undefined);
-        } else {
-          await connectDevice();
+        } finally {
+          setBusy(false);
         }
       }),
     [runOnce, permission, requestMicrophonePermission, connectDevice]
@@ -155,7 +171,7 @@ export function useLiveSetup({ enabled, onConnected }: Options): LiveSetup {
   }, [refreshAudioInputDevices, refreshAudioOutputDevices]);
 
   const selectDevice = useCallback(
-    (deviceId: string) => runOnce(() => connectDevice(deviceId)),
+    (deviceId: string) => runOnce(() => connectDevice(deviceId, true)),
     [runOnce, connectDevice]
   );
 

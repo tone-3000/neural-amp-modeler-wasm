@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.6
+
+### Fixed
+
+- The first live connection no longer starts monitoring. The browser hands
+  over whatever input it considers default — often the laptop mic — and
+  unmuting that was a feedback loop. Input stays muted until the user picks
+  an interface in Settings (or unmutes), as before the unified player.
+- No more flash of "No audio interface found" right after granting the
+  microphone: the connect flow is busy end to end, and the empty state only
+  shows once an enumeration actually came back empty.
+
 ## 3.0.5
 
 ### Fixed

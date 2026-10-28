@@ -41,10 +41,11 @@ const SECTION = 'px-4 sm:px-6';
  *   [ playbar                                          ]
  *   [ controls | live setup wizard | play live         ]
  *
- * `compact` (docked under a card): the playbar is the whole collapsed
- * player; the chevron opens the tabs and the body beneath it.
+ * `compact` (docked under a card, or a standalone bar in an embed): the
+ * playbar is the whole collapsed player; the chevron opens the tabs and the
+ * body beneath it.
  *
- *   [ image  title                             ‹ n/N › ]   dense header, playlists only
+ *   [ image  title                             ‹ n/N › ]   dense header: playlists, or not docked
  *   [ playbar                                        ⌄ ]
  *   [ Sample | Plug in and play            Powered by ]   ┐ expanded
  *   [ controls | live setup wizard | play live         ]   ┘
@@ -65,7 +66,9 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
   const inert = status !== 'ready';
   const isLive = live && c.sourceMode === 'live';
   const meta = c.activeTone.meta;
-  const showHeader = (isFull && meta) || isPlaylist;
+  // `compact` docked under a card leaves the image and name to the card; a
+  // standalone compact bar (share embed) carries them in the dense header.
+  const showHeader = isPlaylist || (!!meta && (isFull || !docked));
   const showTabBar = live || attribution;
   const assetError =
     c.activeAssets.status === 'error' ? c.activeAssets.message : null;

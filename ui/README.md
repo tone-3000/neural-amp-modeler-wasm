@@ -165,11 +165,11 @@ const tones = DEFAULT_MODELS.map(model => ({
 
 ## Layouts
 
-| `layout`  | What renders                                                          | Playlist |
-| --------- | --------------------------------------------------------------------- | -------- |
-| `mini`    | A play/pause button. The tone title is the accessible label.          | no       |
-| `compact` | Playbar; controls behind a toggle. Header only for playlists (pager). | yes      |
-| `full`    | Tone header + playbar + controls, always expanded.                    | yes      |
+| `layout`  | What renders                                                                                                             | Playlist |
+| --------- | ------------------------------------------------------------------------------------------------------------------------ | -------- |
+| `mini`    | A play/pause button. The tone title is the accessible label.                                                             | no       |
+| `compact` | Playbar; controls behind a toggle. Dense header (image, title) unless `docked`; playlists always get it, with the pager. | yes      |
+| `full`    | Tone header + playbar + controls, always expanded.                                                                       | yes      |
 
 Every panel is one stack: source tabs ("Sample" / "Plug in and play") with the attribution, tone header, playbar, then the body. The source tab is shared by every player under one `T3kPlayerProvider`: switching one player to live switches the page (and stops whatever was playing), so a connected interface works in every player without configuring each one. The body shows the controls, or — on the live tab — the connect flow (permission, device discovery, per-browser unblock steps) and the inline audio settings (interface, output, input channel with meters). There is no dialog.
 
@@ -191,7 +191,7 @@ Every panel is one stack: source tabs ("Sample" / "Plug in and play") with the a
 | `headerSlot`      | `ReactNode`                      | —          | Extra content on the playbar (e.g. an info icon).                                                                                                   |
 | `attribution`     | `boolean`                        | `true`     | "Powered by TONE3000" footer.                                                                                                                       |
 | `linkTarget`      | `'_blank' \| '_self'`            | `'_blank'` | For `meta.href` links. Keep `_blank` inside iframes.                                                                                                |
-| `docked`          | `boolean`                        | `false`    | `compact`: flush under a card.                                                                                                                      |
+| `docked`          | `boolean`                        | `false`    | `compact`: flush under a card, which also carries the image and name, so the dense header is dropped.                                               |
 | `size`            | `number`                         | `40`       | `mini`: button diameter in px.                                                                                                                      |
 | `id`              | `string`                         | auto       | Stable id if you need to correlate events across remounts.                                                                                          |
 | `onEvent`         | `(event: PlayerEvent) => void`   | —          | See below.                                                                                                                                          |

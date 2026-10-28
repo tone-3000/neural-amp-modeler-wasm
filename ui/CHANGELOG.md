@@ -2,6 +2,13 @@
 
 ## 3.0.4
 
+### Changed
+
+- `compact` shows the dense tone header (image, title, author) whenever it
+  isn't `docked`. Under a card the card already carries them; a standalone
+  compact bar — a share embed — had no way to say what it was playing.
+  Playlists keep the header in every case, as before.
+
 ### Fixed
 
 - `defaultExpanded` flipping to `true` after mount now opens the compact

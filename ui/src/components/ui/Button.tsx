@@ -12,7 +12,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-accent-fg border border-accent',
+  primary: 't3k-btn-primary border border-transparent',
   secondary: 'bg-transparent text-fg border border-fg',
   ghost: 'bg-transparent text-link border border-transparent hover:underline',
 };
@@ -22,7 +22,12 @@ const sizeStyles: Record<ButtonSize, string> = {
   md: 'h-10 px-5 text-sm',
 };
 
-/** Pill button. `primary` is filled with the accent, `secondary` outlined. */
+/**
+ * Pill button. `primary` is filled with `--t3k-primary` (the TONE3000
+ * blue), `secondary` outlined. `fullWidth` fills its container; callers
+ * cap the container (or pass `max-w-*` in `className`) so a wide panel
+ * doesn't get a panel-wide pill.
+ */
 export const Button: React.FC<ButtonProps> = ({
   variant = 'primary',
   size = 'md',
@@ -35,7 +40,7 @@ export const Button: React.FC<ButtonProps> = ({
 }) => (
   <button
     type={type}
-    className={`inline-flex items-center justify-center gap-2 font-semibold rounded-full whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-link disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${fullWidth ? 'w-full' : ''} ${className}`}
+    className={`items-center justify-center gap-2 font-semibold rounded-full whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-link disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${fullWidth ? 'flex w-full' : 'inline-flex'} ${className}`}
     {...props}
   >
     {leftIcon && (

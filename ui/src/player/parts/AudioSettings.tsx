@@ -253,6 +253,7 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({
       <Button
         variant='primary'
         fullWidth
+        className='max-w-sm mx-auto'
         onClick={onClose}
         disabled={disabled || !config}
       >

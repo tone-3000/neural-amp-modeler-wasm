@@ -296,7 +296,7 @@ Colours, type and radii flow through CSS variables on the `.neural-amp-modeler` 
 }
 ```
 
-Tokens: `--t3k-canvas`, `--t3k-surface`, `--t3k-surface-2`, `--t3k-line`, `--t3k-line-strong`, `--t3k-fg`, `--t3k-muted`, `--t3k-muted-2`, `--t3k-accent`, `--t3k-on-accent`, `--t3k-link`, `--t3k-success`, `--t3k-danger`, `--t3k-warning`, `--t3k-toggle-on`, `--t3k-toggle-off`, `--t3k-toggle-knob` (the switch; same in both themes), `--t3k-font`, `--t3k-font-mono`, `--t3k-radius`, `--t3k-radius-sm`.
+Tokens: `--t3k-canvas`, `--t3k-surface`, `--t3k-surface-2`, `--t3k-line`, `--t3k-line-strong`, `--t3k-fg`, `--t3k-muted`, `--t3k-muted-2`, `--t3k-accent`, `--t3k-on-accent` (the transport), `--t3k-primary`, `--t3k-on-primary` (primary buttons; a gradient by default, any `background` value works), `--t3k-link`, `--t3k-success`, `--t3k-danger`, `--t3k-warning`, `--t3k-toggle-on`, `--t3k-toggle-off`, `--t3k-toggle-knob` (the switch; same in both themes), `--t3k-font`, `--t3k-font-mono`, `--t3k-radius`, `--t3k-radius-sm`.
 
 ## Engine API (no React)
 

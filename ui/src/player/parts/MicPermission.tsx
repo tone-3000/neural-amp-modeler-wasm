@@ -10,8 +10,8 @@ import {
 import { LiveSetup } from '../hooks/useLiveSetup';
 
 export const Privacy = () => (
-  <p className='flex items-center justify-center gap-2 text-sm text-muted'>
-    <Lock size={16} aria-hidden='true' />
+  <p className='flex items-start gap-2 text-sm text-muted'>
+    <Lock size={16} aria-hidden='true' className='flex-shrink-0 mt-0.5' />
     Audio is processed locally and never leaves your device.
   </p>
 );
@@ -95,7 +95,9 @@ export const MicPermission: React.FC<MicPermissionProps> = ({
   const retryable = live.permission === 'denied' || live.permission === 'error';
 
   return (
-    <div className='flex flex-col gap-4'>
+    // One left-aligned column, as wide as the Allow button: steps, alerts,
+    // button and privacy note line up instead of the text running panel-wide.
+    <div className='flex flex-col gap-4 w-full max-w-md'>
       <div className='text-muted-2'>
         Allow microphone access to connect your interface:
         <ol className='list-decimal list-inside mt-2 space-y-1 text-fg'>

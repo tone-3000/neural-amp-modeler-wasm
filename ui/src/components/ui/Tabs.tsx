@@ -30,7 +30,7 @@ const Tabs = ({
             role='tab'
             aria-selected={active}
             disabled={disabled}
-            className={`flex justify-center py-3 font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors duration-150 disabled:cursor-not-allowed ${
+            className={`flex justify-center py-2 font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors duration-150 disabled:cursor-not-allowed ${
               fill ? 'flex-1 px-4' : 'px-1'
             } ${
               active

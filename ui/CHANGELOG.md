@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.0.2
+
+### Changed
+
+- Primary buttons are TONE3000 blue. New tokens `--t3k-primary` (a gradient
+  by default; any `background` value works) and `--t3k-on-primary`;
+  `--t3k-accent` now only colours the transport glyphs.
+- Full-width buttons no longer stretch across a wide panel: Done is capped
+  and centred, and the Microphone Access step (steps, button, privacy note)
+  is one left-aligned column.
+- Live controls: the input group shares the capture select's column with
+  the settings gear beside it, in line with the Tone toggle.
+- Source tabs are a little shorter.
+
+### Fixed
+
+- Knob value tips no longer flash when the live controls mount or a mix
+  resets; they show on hover, while dragging, and briefly after a wheel or
+  keyboard turn.
+
 ## 3.0.1
 
 ### Fixed

@@ -106,32 +106,31 @@ export const Controls: React.FC<ControlsProps> = ({
       </div>
 
       {isLive ? (
-        // Live stacks: a bordered input group (gain row with the settings
-        // gear at its end, interface name under it), then the companion.
+        // Live stacks: a bordered input group (gain row, interface name
+        // under it) in the select's column with the settings gear beside it
+        // in the toggle's column, then the companion.
         <div className='flex flex-col gap-2 text-sm min-w-0'>
-          <div className='flex flex-col gap-1 border border-line rounded-md px-4 py-3'>
-            <div className='flex items-center gap-3'>
-              <div className='flex-1 min-w-0'>
-                <LiveGain label={c.labels.input} active={c.isActive} />
+          <div className='flex items-center gap-4'>
+            <div className='flex-1 min-w-0 flex flex-col gap-1 border border-line rounded-md px-4 py-3'>
+              <LiveGain label={c.labels.input} active={c.isActive} />
+              <div className='flex items-center gap-x-2 text-xs text-muted min-w-0'>
+                <span className='truncate'>{device?.label ?? 'Interface'}</span>
+                {c.live.config && (c.live.config.channelCount ?? 0) >= 2 && (
+                  <span className='flex-shrink-0'>
+                    Input {c.live.config.channel + 1}
+                  </span>
+                )}
               </div>
-              <button
-                type='button'
-                onClick={() => c.setView('settings')}
-                disabled={disabled}
-                className='p-1 -m-1 flex-shrink-0 rounded text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-fg disabled:cursor-not-allowed disabled:opacity-50'
-                aria-label='Audio settings'
-              >
-                <Settings size={18} />
-              </button>
             </div>
-            <div className='flex items-center gap-x-2 text-xs text-muted min-w-0'>
-              <span className='truncate'>{device?.label ?? 'Interface'}</span>
-              {c.live.config && (c.live.config.channelCount ?? 0) >= 2 && (
-                <span className='flex-shrink-0'>
-                  Input {c.live.config.channel + 1}
-                </span>
-              )}
-            </div>
+            <button
+              type='button'
+              onClick={() => c.setView('settings')}
+              disabled={disabled}
+              className='w-10 flex-shrink-0 flex justify-center p-1 rounded text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-fg disabled:cursor-not-allowed disabled:opacity-50'
+              aria-label='Audio settings'
+            >
+              <Settings size={24} />
+            </button>
           </div>
           <span className={`min-w-0 flex items-center gap-3 ${dim}`}>
             {select(c.companion, true)}

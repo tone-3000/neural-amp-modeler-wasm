@@ -36,16 +36,23 @@ export const KnobControl: React.FC<KnobControlProps> = ({
   // const angleDeg = value * 270 - 135; // -135..+135
   const knobRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [nudged, setNudged] = useState(false);
   const nudgeTimer = useRef<ReturnType<typeof setTimeout>>();
-  const firstRender = useRef(true);
+  // Set by the knob's own change callback, so only the user's wheel/key
+  // turns flash the tip — not programmatic updates (a restored gain on
+  // mount, a reset when the IR changes).
+  const userChange = useRef(false);
 
-  // A value change that isn't part of a drag (wheel, keys) flashes the tip.
+  const handleChange = (next: number) => {
+    userChange.current = true;
+    onChange(next);
+  };
+
+  // A user change that isn't part of a drag (wheel, keys) flashes the tip.
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
+    if (!userChange.current) return;
+    userChange.current = false;
     if (dragging || !tip) return;
     setNudged(true);
     clearTimeout(nudgeTimer.current);
@@ -133,7 +140,9 @@ export const KnobControl: React.FC<KnobControlProps> = ({
         dragSensitivity={0.006}
         valueRawRoundFn={x => Math.round(x * 100) / 100}
         valueRawDisplayFn={x => `${x.toFixed(2)}`}
-        onValueRawChange={onChange}
+        onValueRawChange={handleChange}
+        onPointerEnter={() => setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
         className='knob'
         style={{
           width: size,
@@ -149,7 +158,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       >
         {/* New gradient knob design */}
         <KnobInner value={value} size={size} />
-        {tip && (dragging || nudged) && (
+        {tip && (dragging || hovered || nudged) && (
           <span
             role='status'
             className='pointer-events-none absolute left-1/2 bottom-full mb-1.5 -translate-x-1/2 z-10 whitespace-nowrap rounded bg-surface border border-line px-1.5 py-0.5 font-mono text-xs text-fg tabular-nums shadow'

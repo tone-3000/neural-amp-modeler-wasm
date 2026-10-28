@@ -39,6 +39,8 @@
   --t3k-muted-2: #d4d4d8;
   --t3k-accent: #ffffff;
   --t3k-on-accent: #000000;
+  --t3k-primary: linear-gradient(180deg, #0000ff 0%, #0000d0 100%);
+  --t3k-on-primary: #ffffff;
   --t3k-link: #6b9bff;
   --t3k-success: #00d13b;
   --t3k-danger: #ff3b3b;
@@ -57,6 +59,8 @@
   --t3k-muted-2: #444444;
   --t3k-accent: #1a1a1a;
   --t3k-on-accent: #ffffff;
+  --t3k-primary: linear-gradient(180deg, #0000ff 0%, #0000d0 100%);
+  --t3k-on-primary: #ffffff;
   --t3k-link: #1d5fd1;
   --t3k-success: #0a7d3b;
   --t3k-danger: #c8102e;
@@ -80,6 +84,13 @@
 .neural-amp-modeler * {
   /* This ensures all Tailwind utilities are scoped to the component */
   box-sizing: border-box;
+}
+
+/* Primary button fill. A token so partners can swap the TONE3000 blue
+ * gradient for a flat brand colour; `accent` stays with the transport. */
+.t3k-btn-primary {
+  background: var(--t3k-primary);
+  color: var(--t3k-on-primary);
 }
 
 /* Native <select>: strip the UA chrome, keep the OS popup (which renders

@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.5
+
+### Fixed
+
+- Live mode no longer fails inside a cross-origin frame that lacks
+  `allow="speaker-selection"`. Every live start re-applied the output sink,
+  and in Chromium `AudioContext.setSinkId('')` needs that policy even for the
+  default device, so hosts saw "Permissions-Policy disallows speaker
+  selection" and no live input. Default → default is now a no-op, a failed
+  re-apply only logs, and the Output Device picker is hidden when the policy
+  denies it. The README's embed snippet adds `speaker-selection` to `allow`.
+
 ## 3.0.4
 
 ### Changed

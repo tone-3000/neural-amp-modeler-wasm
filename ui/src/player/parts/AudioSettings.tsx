@@ -8,7 +8,7 @@ import { NativeSelect } from '../../components/ui/NativeSelect';
 import { Radio } from '../../components/ui/Radio';
 import { ToggleSimple } from '../../components/ui/ToggleSimple';
 import { useT3kPlayerContext } from '../../context/T3kPlayerContext';
-import { isSafari } from '../../utils/browser';
+import { isSafari, speakerSelectionAllowedByPolicy } from '../../utils/browser';
 import { PlayerController } from '../hooks/usePlayer';
 import { MicPermission } from './MicPermission';
 
@@ -209,30 +209,34 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({
         </div>
       )}
 
-      <Field
-        heading='Output Device'
-        helper='Select where you want to hear the sound.'
-      >
-        {connecting ? (
-          <Initializing />
-        ) : (
-          <NativeSelect
-            ariaLabel='Output device'
-            options={[
-              { label: 'System Default', value: '' },
-              ...live.outputDevices.map(d => ({
-                label: d.label,
-                value: d.deviceId,
-              })),
-            ]}
-            value={live.selectedOutputDeviceId ?? ''}
-            onChange={value =>
-              live.setOutputDevice(value === '' ? null : value)
-            }
-            disabled={disabled}
-          />
-        )}
-      </Field>
+      {/* An embed without allow="speaker-selection" can't route output;
+          the picker would only ever fail, so it goes. Default output works. */}
+      {speakerSelectionAllowedByPolicy() !== false && (
+        <Field
+          heading='Output Device'
+          helper='Select where you want to hear the sound.'
+        >
+          {connecting ? (
+            <Initializing />
+          ) : (
+            <NativeSelect
+              ariaLabel='Output device'
+              options={[
+                { label: 'System Default', value: '' },
+                ...live.outputDevices.map(d => ({
+                  label: d.label,
+                  value: d.deviceId,
+                })),
+              ]}
+              value={live.selectedOutputDeviceId ?? ''}
+              onChange={value =>
+                live.setOutputDevice(value === '' ? null : value)
+              }
+              disabled={disabled}
+            />
+          )}
+        </Field>
+      )}
 
       <Field
         heading='Input Monitoring'

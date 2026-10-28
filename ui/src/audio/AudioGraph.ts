@@ -395,7 +395,12 @@ export class AudioGraph {
     };
     if (c.state === 'suspended') await c.resume();
     // Re-apply the sink: changing sources resets the workaround element.
-    await this.setSink(this.sinkId);
+    // Routing is a nicety; if it fails, live still runs on the default output.
+    try {
+      await this.setSink(this.sinkId);
+    } catch (error) {
+      console.warn('[Audio] Could not re-apply output device:', error);
+    }
     return this._live.state;
   }
 
@@ -453,8 +458,14 @@ export class AudioGraph {
    * MediaStreamDestination + `<audio>` element.
    */
   async setSink(deviceId: string | null): Promise<void> {
+    const previous = this.sinkId;
     this.sinkId = deviceId;
     if (!needsMediaStreamWorkaround) {
+      // Default → default is a no-op. Skipping it matters inside a
+      // cross-origin frame: `setSinkId('')` still needs the
+      // `speaker-selection` permissions policy there and would reject,
+      // which used to take live mode down with it on every start.
+      if (!deviceId && !previous) return;
       const ctx = this.context as AudioContext & {
         setSinkId?: (id: string) => Promise<void>;
       };

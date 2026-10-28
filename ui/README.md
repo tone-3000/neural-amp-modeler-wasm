@@ -266,12 +266,12 @@ function Frame({ tones }) {
   data-t3k-player
   src="https://your-site/embed/player?tones=123"
   title="Player"
-  allow="autoplay; microphone"
+  allow="autoplay; microphone; speaker-selection"
 ></iframe>
 <script async src="https://your-site/embed.js"></script>
 ```
 
-The host writes the `<iframe>` itself rather than having the script create it, so embeds work without JavaScript and inside CMS blocks that strip `<script>` tags. `allow="microphone"` is what lets the "Plug in and play" tab reach the user's audio interface from inside a cross-origin frame; a frame's permissions policy is fixed when it navigates, so the script can't add it afterwards. It warns in the console when a frame is missing it. If you don't want live mode in an embed, pass `live={false}` in the frame (the reference frame reads `?live=0`) and drop `microphone` from `allow`. When the policy does deny the microphone, the live tab says so and links to `meta.href` instead of showing browser unblock steps.
+The host writes the `<iframe>` itself rather than having the script create it, so embeds work without JavaScript and inside CMS blocks that strip `<script>` tags. `allow="microphone"` is what lets the "Plug in and play" tab reach the user's audio interface from inside a cross-origin frame; a frame's permissions policy is fixed when it navigates, so the script can't add it afterwards. It warns in the console when a frame is missing it. If you don't want live mode in an embed, pass `live={false}` in the frame (the reference frame reads `?live=0`) and drop `microphone` from `allow`. When the policy does deny the microphone, the live tab says so and links to `meta.href` instead of showing browser unblock steps. `speaker-selection` is what lets the Output Device picker route audio to a chosen device (`setSinkId`); without it live mode still works on the system default output and the picker is hidden.
 
 The script sizes every `iframe[data-t3k-player]` to the height the player reports (including frames injected later), tells the player a resizer is present so it can offer expand/collapse, and re-dispatches player events on the iframe element as bubbling `t3k:<type>` CustomEvents:
 

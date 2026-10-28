@@ -3,7 +3,7 @@
  * dependency-free IIFE; tone3000.com serves it at `/embed.js`.
  *
  *   <iframe src="https://www.tone3000.com/embed/player?tones=123" data-t3k-player
- *           allow="autoplay; microphone" …></iframe>
+ *           allow="autoplay; microphone; speaker-selection" …></iframe>
  *   <script async src="https://www.tone3000.com/embed.js"></script>
  *
  * It sizes each `iframe[data-t3k-player]` to the height the player reports,

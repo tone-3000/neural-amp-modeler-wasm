@@ -11,9 +11,11 @@ interface ToneHeaderProps {
   linkTarget?: '_blank' | '_self';
 }
 
+// Image sizes sit just under a two-line title plus the facts row (~72px /
+// ~64px), so the thumbnail reads as the same block rather than an icon.
 const SIZES = {
-  default: { image: 56, title: 'text-base sm:text-lg', avatar: 20 },
-  dense: { image: 44, title: 'text-sm sm:text-base', avatar: 18 },
+  default: { image: 68, title: 'text-base sm:text-lg', avatar: 20 },
+  dense: { image: 56, title: 'text-sm sm:text-base', avatar: 18 },
 } as const;
 
 /**
@@ -93,7 +95,7 @@ export const ToneHeader: React.FC<ToneHeaderProps> = ({
             href={meta.href}
             target={linkTarget}
             rel={rel}
-            className='min-w-0 hover:underline'
+            className='min-w-0 cursor-pointer'
           >
             {title}
           </a>
@@ -119,7 +121,7 @@ export const ToneHeader: React.FC<ToneHeaderProps> = ({
                   href={author.href}
                   target={linkTarget}
                   rel={rel}
-                  className='min-w-0 max-w-full hover:underline'
+                  className='min-w-0 max-w-full cursor-pointer'
                 >
                   {authorName}
                 </a>

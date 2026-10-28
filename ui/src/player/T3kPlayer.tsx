@@ -70,9 +70,7 @@ export const T3kPlayer: React.FC<T3kPlayerProps> = props => {
       data-theme={theme}
       data-player-id={controller.playerId}
       style={
-        effectiveLayout === 'mini'
-          ? { background: 'none', display: 'inline-flex' }
-          : undefined
+        effectiveLayout === 'mini' ? { display: 'inline-flex' } : undefined
       }
     >
       {effectiveLayout === 'mini' ? (

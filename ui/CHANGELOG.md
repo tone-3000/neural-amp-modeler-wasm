@@ -8,6 +8,11 @@
   isn't `docked`. Under a card the card already carries them; a standalone
   compact bar — a share embed — had no way to say what it was playing.
   Playlists keep the header in every case, as before.
+- Tone header thumbnails are larger (68px full, 56px dense), close to the
+  height of a two-line title plus the facts row instead of an icon beside it.
+- The player root no longer paints a background; only the rounded panel
+  does. The host's background shows at the corners, so embeds sit on light
+  pages (or transparent frames) without a black or white slab behind them.
 
 ### Fixed
 

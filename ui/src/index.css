@@ -73,7 +73,9 @@
   font-family: var(--t3k-font);
   line-height: 1.5;
   color: var(--t3k-fg);
-  background-color: var(--t3k-canvas);
+  /* No background here: the panel paints its own surface inside its rounded
+     border, so whatever the host puts behind the player shows at the
+     corners (embeds on light pages, cards, transparent frames). */
   text-rendering: optimizeLegibility;
   --tw-bg-opacity: 1;
   --tw-text-opacity: 1;

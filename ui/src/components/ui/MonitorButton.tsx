@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { calculateLevels, scaleForDisplay } from '../../utils/metering';
 
 const INNER_CIRCLE_SIZE = 16;
@@ -29,31 +29,37 @@ export const MonitorButton: React.FC<MonitorButtonProps> = ({
   trailing,
 }) => {
   const bufferRef = useRef<Float32Array>(new Float32Array(2048));
+  const ringRef = useRef<SVGCircleElement>(null);
 
   const center = size / 2;
   const innerRadius = INNER_CIRCLE_SIZE / 2;
   const ringMinRadius = innerRadius + RING_GAP + RING_STROKE / 2;
   const ringMaxRadius = size / 2 - RING_STROKE / 2 - 1;
-  const [ringRadius, setRingRadius] = useState(ringMinRadius);
 
+  // The ring follows the level at frame rate. It's written straight to the
+  // SVG node: a React state update per frame would re-render the button
+  // (and its trailing slot) 60×/s alongside the scope and meter loops, and
+  // a CSS transition on `r` would keep chasing targets it never reaches.
   useEffect(() => {
+    const ring = ringRef.current;
+    if (!ring) return;
     if (!isMonitoring || !analyserNode) {
-      setRingRadius(ringMinRadius);
+      ring.setAttribute('r', String(ringMinRadius));
       return;
     }
-    let running = true;
+    let frame = 0;
     const buffer = bufferRef.current;
     const animate = () => {
-      if (!running) return;
       const levels = calculateLevels(analyserNode, buffer);
       const glow = scaleForDisplay(levels.rms);
-      setRingRadius(ringMinRadius + glow * (ringMaxRadius - ringMinRadius));
-      requestAnimationFrame(animate);
+      ring.setAttribute(
+        'r',
+        String(ringMinRadius + glow * (ringMaxRadius - ringMinRadius))
+      );
+      frame = requestAnimationFrame(animate);
     };
-    requestAnimationFrame(animate);
-    return () => {
-      running = false;
-    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
   }, [isMonitoring, analyserNode, ringMinRadius, ringMaxRadius]);
 
   const color = isMonitoring ? 'var(--t3k-danger)' : 'var(--t3k-muted)';
@@ -79,13 +85,13 @@ export const MonitorButton: React.FC<MonitorButtonProps> = ({
       >
         <circle cx={center} cy={center} r={innerRadius} fill={color} />
         <circle
+          ref={ringRef}
           cx={center}
           cy={center}
-          r={ringRadius}
+          r={ringMinRadius}
           fill='none'
           stroke={color}
           strokeWidth={RING_STROKE}
-          className='transition-[r] duration-75'
         />
       </svg>
       {trailing}

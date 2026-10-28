@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.3
+
+### Fixed
+
+- The live LED's ring follows the input level again. 3.0.0 put a CSS
+  transition on it, so the per-frame updates kept chasing targets they never
+  reached: it lagged, snapped, and could stick on a stale level. The ring is
+  now written straight to the SVG node each frame, which also stops the
+  button re-rendering 60×/s while monitoring.
+
 ## 3.0.2
 
 ### Changed

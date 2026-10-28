@@ -1,6 +1,6 @@
 {
   "name": "neural-amp-modeler-wasm",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "description": "Neural Amp Modeler in the browser: WebAssembly engine, React player (mini / compact / full, playlists, live input) and an iframe embed bridge for partner sites",
   "type": "module",
   "main": "dist/index.js",
@@ -25,6 +25,16 @@
     "./dist/styles.css": "./dist/styles.css",
     "./dist/engine/nam-worklet.js": "./dist/engine/nam-worklet.js",
     "./dist/engine/nam-engine.wasm": "./dist/engine/nam-engine.wasm"
+  },
+  "typesVersions": {
+    "*": {
+      "engine": [
+        "./dist/engine/index.d.ts"
+      ],
+      "embed": [
+        "./dist/embed/index.d.ts"
+      ]
+    }
   },
   "files": [
     "dist",

@@ -290,7 +290,11 @@ export interface T3kPlayerProps {
   tones: NonEmptyArray<PlayerTone>;
   /** Defaults to `'full'`. Playlists do not support `'mini'`. */
   layout?: PlayerLayout;
-  /** `compact` only: start expanded. */
+  /**
+   * `compact` only: start expanded. A later change to `true` is honoured until
+   * the user toggles the panel, so an embed can open up once it learns the
+   * host can't resize the frame.
+   */
   defaultExpanded?: boolean;
   /** Playlist only: which tone is active first. Defaults to the first tone. */
   defaultToneId?: string;

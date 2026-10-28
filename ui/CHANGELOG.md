@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.4
+
+### Fixed
+
+- `defaultExpanded` flipping to `true` after mount now opens the compact
+  panel (until the user toggles it). The embed pattern
+  `defaultExpanded={bridge.hostHasResizer === false}` relies on this: the
+  host handshake settles ~750 ms after mount, so the prop only seeded the
+  initial state before and the frame stayed collapsed on fixed-height hosts.
+- `neural-amp-modeler-wasm/embed` and `/engine` resolve their types under
+  TypeScript's classic `moduleResolution: "node"` too (`typesVersions`),
+  not only under `bundler` / `node16`.
+
 ## 3.0.3
 
 ### Fixed

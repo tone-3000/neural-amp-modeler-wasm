@@ -542,14 +542,29 @@ export function usePlayer(options: Options): PlayerController {
     emit({ type: 'bypass_change', bypassed });
   }, [isActive, setBypass, emit]);
 
+  const userToggledExpand = useRef(false);
   const setExpanded = useCallback(
     (expanded: boolean) => {
+      userToggledExpand.current = true;
       if (expanded === stateRef.current.expanded) return;
       dispatch({ type: 'expanded/set', expanded });
       emit({ type: expanded ? 'expand' : 'collapse' });
     },
     [emit]
   );
+
+  // `defaultExpanded` seeds the initial state, but an embed only learns
+  // whether its host can resize the frame after a short handshake, so honour
+  // a late flip to `true` as long as the user hasn't touched the toggle.
+  useEffect(() => {
+    if (
+      options.defaultExpanded &&
+      !userToggledExpand.current &&
+      !stateRef.current.expanded
+    ) {
+      dispatch({ type: 'expanded/set', expanded: true });
+    }
+  }, [options.defaultExpanded]);
 
   // Whenever the controls are visible (always in `full`, when expanded in
   // `compact`) a lazy tone resolves so the selects aren't empty before play.

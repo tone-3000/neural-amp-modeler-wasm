@@ -3,15 +3,19 @@ import React from 'react';
 interface LogoSmProps {
   width?: number;
   height?: number;
+  className?: string;
 }
 
-export const LogoSm = ({ width = 94, height = 32 }: LogoSmProps) => (
+/** The T3K mark. `Logo` is the full wordmark. */
+export const LogoSm = ({ width = 94, height = 32, className }: LogoSmProps) => (
   <svg
     width={width}
     height={height}
     viewBox='0 0 94 32'
     fill='none'
     xmlns='http://www.w3.org/2000/svg'
+    className={className}
+    aria-hidden='true'
   >
     <g>
       <path

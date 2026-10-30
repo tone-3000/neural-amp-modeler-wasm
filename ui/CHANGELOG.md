@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.7
+
+### Changed
+
+- Attribution shows the full TONE3000 wordmark where it fits: "Powered by"
+  - wordmark, then the wordmark alone, then the T3K mark as the tab bar
+    narrows (container queries, so it follows the player's width). The link's
+    accessible name is "Powered by TONE3000" in every state.
+
 ## 3.0.6
 
 ### Fixed

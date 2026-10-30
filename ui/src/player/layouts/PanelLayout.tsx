@@ -77,7 +77,11 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
 
   const tabBar = showTabBar && (
     <div
-      className={`${SECTION} t3k-tabbar flex items-center justify-between gap-4 ${
+      className={`${SECTION} t3k-tabbar ${
+        // The attribution's step-down thresholds depend on whether it
+        // shares the row with the tabs (index.css).
+        live ? 't3k-has-tabs' : 't3k-no-tabs'
+      } flex items-center justify-between gap-4 ${
         // Only `full` rules the tabs off from the header beneath; in
         // `compact` the tabs sit directly under the bar, like the v2 accordion.
         isFull ? 'border-b border-line' : ''

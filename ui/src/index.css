@@ -107,16 +107,47 @@
   color: var(--t3k-fg);
 }
 
-/* Source tabs + attribution share one row. Below ~380px (a 320px embed, a
- * narrow card) "Powered by" + logo + both tabs don't fit, so the words go
- * screen-reader-only and the logo carries the link. Container query so it
- * follows the player's width, not the viewport (content box, see below). */
+/* Source tabs + attribution share one row. The attribution steps down as
+ * the row narrows: "Powered by" + TONE3000 wordmark (~180px) → wordmark
+ * alone (~105px) → the T3K mark (42px). Next to both tabs (~200px + 16px
+ * gap) the first needs ~395px of content box, the second ~320px; the
+ * thresholds add a little slack. Without tabs (`live={false}`) only the
+ * attribution's own width matters. Container queries so it follows the
+ * player's width, not the viewport (content box, see below). */
 .t3k-tabbar {
   container-type: inline-size;
 }
-@container (max-width: 347px) {
-  .t3k-powered-text {
-    @apply sr-only;
+.t3k-powered-logo,
+.t3k-powered-mark {
+  display: none;
+}
+.t3k-powered-logo {
+  display: block;
+}
+@container (max-width: 409px) {
+  .t3k-has-tabs .t3k-powered-text {
+    display: none;
+  }
+}
+@container (max-width: 335px) {
+  .t3k-has-tabs .t3k-powered-logo {
+    display: none;
+  }
+  .t3k-has-tabs .t3k-powered-mark {
+    display: block;
+  }
+}
+@container (max-width: 199px) {
+  .t3k-no-tabs .t3k-powered-text {
+    display: none;
+  }
+}
+@container (max-width: 119px) {
+  .t3k-no-tabs .t3k-powered-logo {
+    display: none;
+  }
+  .t3k-no-tabs .t3k-powered-mark {
+    display: block;
   }
 }
 

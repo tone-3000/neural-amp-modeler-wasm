@@ -101,7 +101,7 @@ const Preview: React.FC = () => {
 
             <Section
               title='single · compact · docked'
-              note='tone3000 search card. Full player minus the header; controls behind the chevron. Lazy assets.'
+              note='Under a host card. Full player minus the header; controls behind the chevron. Lazy assets.'
             >
               <FakeCard>
                 <T3kPlayer
@@ -113,6 +113,22 @@ const Preview: React.FC = () => {
                     <InfoIcon size={20} className='text-muted flex-shrink-0' />
                   }
                   onEvent={log('compact')}
+                />
+              </FakeCard>
+            </Section>
+
+            <Section
+              title='single · compact · docked · collapseTabs'
+              note='The playbar is the whole collapsed player; the tabs open with the controls.'
+            >
+              <FakeCard>
+                <T3kPlayer
+                  tones={[demoTone(3, { lazy: true })]}
+                  layout='compact'
+                  docked
+                  collapseTabs
+                  linkTarget='_self'
+                  onEvent={log('compact-collapsed-tabs')}
                 />
               </FakeCard>
             </Section>

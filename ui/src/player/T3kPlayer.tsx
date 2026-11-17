@@ -26,6 +26,7 @@ export const T3kPlayer: React.FC<T3kPlayerProps> = props => {
     attribution = true,
     linkTarget = '_blank',
     docked = false,
+    collapseTabs = false,
     size,
     onEvent,
   } = props;
@@ -86,6 +87,7 @@ export const T3kPlayer: React.FC<T3kPlayerProps> = props => {
           attribution={attribution}
           linkTarget={linkTarget}
           docked={docked}
+          collapseTabs={collapseTabs}
         />
       )}
     </div>

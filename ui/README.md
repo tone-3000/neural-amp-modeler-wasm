@@ -165,15 +165,15 @@ const tones = DEFAULT_MODELS.map(model => ({
 
 ## Layouts
 
-| `layout`  | What renders                                                                                                             | Playlist |
-| --------- | ------------------------------------------------------------------------------------------------------------------------ | -------- |
-| `mini`    | A play/pause button. The tone title is the accessible label.                                                             | no       |
-| `compact` | Playbar; controls behind a toggle. Dense header (image, title) unless `docked`; playlists always get it, with the pager. | yes      |
-| `full`    | Tone header + playbar + controls, always expanded.                                                                       | yes      |
+| `layout`  | What renders                                                                                                                           | Playlist |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `mini`    | A play/pause button. The tone title is the accessible label.                                                                           | no       |
+| `compact` | Source tabs + playbar; controls behind a toggle. Dense header (image, title) unless `docked`; playlists always get it, with the pager. | yes      |
+| `full`    | Tone header + playbar + controls, always expanded.                                                                                     | yes      |
 
 Every panel is one stack: source tabs ("Sample" / "Plug in and play") with the attribution, tone header, playbar, then the body. The source tab is shared by every player under one `T3kPlayerProvider`: switching one player to live switches the page (and stops whatever was playing), so a connected interface works in every player without configuring each one. The body shows the controls, or — on the live tab — the connect flow (permission, device discovery, per-browser unblock steps) and the inline audio settings (interface, output, input channel with meters). There is no dialog.
 
-`compact` with `docked` drops the top radius and border so it sits flush under a host card (the tone3000 search card pattern). `mini` with more than one tone falls back to `compact` with a console warning.
+`compact` with `docked` drops the top radius and border so it sits flush under a host card (the tone3000 search card pattern). `compact` with `collapseTabs` moves the tab row from the top into the collapsed content, under the playbar, so the playbar is the whole collapsed player. `mini` with more than one tone falls back to `compact` with a console warning.
 
 ## Props
 
@@ -189,9 +189,10 @@ Every panel is one stack: source tabs ("Sample" / "Plug in and play") with the a
 | `isLoading`       | `boolean`                        | `false`    | Skeleton state while the host fetches tones.                                                                                                        |
 | `theme`           | `'dark' \| 'light'`              | `'dark'`   | Both are token sheets on the root.                                                                                                                  |
 | `headerSlot`      | `ReactNode`                      | —          | Extra content on the playbar (e.g. an info icon).                                                                                                   |
-| `attribution`     | `boolean`                        | `true`     | "Powered by TONE3000" footer.                                                                                                                       |
+| `attribution`     | `boolean`                        | `true`     | TONE3000 logo link at the end of the tab row.                                                                                                       |
 | `linkTarget`      | `'_blank' \| '_self'`            | `'_blank'` | For `meta.href` links. Keep `_blank` inside iframes.                                                                                                |
 | `docked`          | `boolean`                        | `false`    | `compact`: flush under a card, which also carries the image and name, so the dense header is dropped.                                               |
+| `collapseTabs`    | `boolean`                        | `false`    | `compact`: put the source tabs / attribution row inside the collapsed content instead of at the top.                                                |
 | `size`            | `number`                         | `40`       | `mini`: button diameter in px.                                                                                                                      |
 | `id`              | `string`                         | auto       | Stable id if you need to correlate events across remounts.                                                                                          |
 | `onEvent`         | `(event: PlayerEvent) => void`   | —          | See below.                                                                                                                                          |

@@ -217,8 +217,8 @@ export interface PlayerTone {
 
 /**
  * - `mini`: a play/pause button and nothing else.
- * - `compact`: playbar; controls collapsed behind a toggle. Full player minus
- *   the tone header (playlists keep a dense header for the pager).
+ * - `compact`: source tabs + playbar; controls collapsed behind a toggle. Full
+ *   player minus the tone header (playlists keep a dense header for the pager).
  * - `full`: tone header + playbar + controls, always expanded.
  */
 export type PlayerLayout = 'mini' | 'compact' | 'full';
@@ -319,7 +319,7 @@ export interface T3kPlayerProps {
   theme?: PlayerTheme;
   /** Rendered at the right end of the playbar (e.g. an info button). */
   headerSlot?: ReactNode;
-  /** Show the "Powered by TONE3000" link. Defaults to `true`. */
+  /** Show the TONE3000 logo link ("Powered by TONE3000"). Defaults to `true`. */
   attribution?: boolean;
   /** `_blank` for embeds (default), `_self` for in-app. Applies to meta links. */
   linkTarget?: '_blank' | '_self';
@@ -328,6 +328,12 @@ export interface T3kPlayerProps {
    * flush under a host card (tone3000 search results).
    */
   docked?: boolean;
+  /**
+   * `compact` only: move the source tabs / attribution row from the top of
+   * the panel into the collapsed content, so it opens with the controls and
+   * the playbar is the whole collapsed player. Defaults to `false`.
+   */
+  collapseTabs?: boolean;
   /** `mini` only: button diameter in px. Defaults to 40. */
   size?: number;
   /** Stable id for this player instance. Generated when omitted. */

@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.1.0
+
+### Changed
+
+- `compact` shows the source tabs / attribution row at the top of the panel,
+  as `full` does, instead of inside the collapsed content. Picking "Plug in
+  and play" on a collapsed player with no interface connected opens the
+  panel, since the connect flow lives in the body.
+- The attribution no longer shows the words "Powered by": it is the
+  TONE3000 wordmark, stepping down to the T3K mark as the tab bar narrows.
+  "Powered by TONE3000" remains the link's accessible name.
+
+### Added
+
+- `collapseTabs` (`compact` only, default `false`) puts the tab row back
+  inside the collapsed content, under the playbar, so the playbar is the
+  whole collapsed player.
+
 ## 3.0.7
 
 ### Changed

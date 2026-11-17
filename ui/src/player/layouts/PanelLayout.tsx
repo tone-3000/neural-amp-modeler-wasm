@@ -22,6 +22,8 @@ export interface PanelLayoutProps {
   linkTarget: '_blank' | '_self';
   /** Drop the top border + radius so the panel docks under a host card. */
   docked: boolean;
+  /** `compact`: tabs / attribution open with the controls, not on top. */
+  collapseTabs: boolean;
 }
 
 const SOURCE_TABS: { mode: SourceMode; label: string }[] = [
@@ -36,18 +38,25 @@ const SECTION = 'px-4 sm:px-6';
  *
  * `full` (tone page, share embed):
  *
- *   [ Sample | Plug in and play            Powered by ]   source tabs / attribution
+ *   [ Sample | Plug in and play              TONE3000 ]   source tabs / attribution
  *   [ image  title · author · gear · pill       ‹ n/N › ]   tone header (+ pager)
  *   [ playbar                                          ]
  *   [ controls | live setup wizard | play live         ]
  *
  * `compact` (docked under a card, or a standalone bar in an embed): the
- * playbar is the whole collapsed player; the chevron opens the tabs and the
- * body beneath it.
+ * same stack with a dense header, and the body behind the chevron.
  *
+ *   [ Sample | Plug in and play              TONE3000 ]
  *   [ image  title                             ‹ n/N › ]   dense header: playlists, or not docked
  *   [ playbar                                        ⌄ ]
- *   [ Sample | Plug in and play            Powered by ]   ┐ expanded
+ *   [ controls | live setup wizard | play live         ]   expanded
+ *
+ * `compact` with `collapseTabs`: the playbar is the whole collapsed player;
+ * the chevron opens the tabs along with the body.
+ *
+ *   [ image  title                             ‹ n/N › ]
+ *   [ playbar                                        ⌄ ]
+ *   [ Sample | Plug in and play              TONE3000 ]   ┐ expanded
  *   [ controls | live setup wizard | play live         ]   ┘
  */
 export const PanelLayout: React.FC<PanelLayoutProps> = ({
@@ -60,9 +69,11 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
   attribution,
   linkTarget,
   docked,
+  collapseTabs,
 }) => {
   const isPlaylist = c.tones.length > 1;
   const isFull = layout === 'full';
+  const tabsOnTop = isFull || !collapseTabs;
   const inert = status !== 'ready';
   const isLive = live && c.sourceMode === 'live';
   const meta = c.activeTone.meta;
@@ -75,6 +86,20 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
   const assetsPending =
     c.activeAssets.status === 'idle' || c.activeAssets.status === 'loading';
 
+  const selectSource = (mode: SourceMode) => {
+    // A collapsed `compact` hides the connect flow, leaving only a disabled
+    // monitor button on the bar: open the panel so going live isn't a dead end.
+    if (
+      mode === 'live' &&
+      !isFull &&
+      !c.expanded &&
+      c.live.status !== 'ready'
+    ) {
+      c.setExpanded(true);
+    }
+    void c.setSourceMode(mode);
+  };
+
   const tabBar = showTabBar && (
     <div
       className={`${SECTION} t3k-tabbar ${
@@ -82,16 +107,17 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
         // shares the row with the tabs (index.css).
         live ? 't3k-has-tabs' : 't3k-no-tabs'
       } flex items-center justify-between gap-4 ${
-        // Only `full` rules the tabs off from the header beneath; in
-        // `compact` the tabs sit directly under the bar, like the v2 accordion.
-        isFull ? 'border-b border-line' : ''
+        // On top, the tabs are ruled off from the header / bar beneath;
+        // collapsed into the body they sit directly under the bar, like the
+        // v2 accordion.
+        tabsOnTop ? 'border-b border-line' : ''
       }`}
     >
       {live ? (
         <Tabs
           tabs={SOURCE_TABS.map(t => t.label)}
           activeTab={SOURCE_TABS.findIndex(t => t.mode === c.sourceMode)}
-          setActiveTab={i => void c.setSourceMode(SOURCE_TABS[i].mode)}
+          setActiveTab={i => selectSource(SOURCE_TABS[i].mode)}
           disabled={inert}
           fill={false}
         />
@@ -175,7 +201,7 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
         </div>
         {!inert && c.expanded && (
           <>
-            {tabBar}
+            {!tabsOnTop && tabBar}
             <div className={`${SECTION} t3k-body py-4 sm:py-5`}>
               {livePanel ?? controls}
             </div>
@@ -193,7 +219,7 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
       aria-busy={status === 'loading' || undefined}
       aria-disabled={status === 'disabled' || undefined}
     >
-      {isFull && tabBar}
+      {tabsOnTop && tabBar}
 
       {showHeader && (
         <div

@@ -78,6 +78,8 @@ interface MicPermissionProps {
   /** Tone page to open when the embedding site is the one saying no. */
   href?: string;
   linkTarget?: '_blank' | '_self';
+  /** The "open the tone" link was followed. */
+  onLinkClick?: (href: string) => void;
 }
 
 /**
@@ -89,6 +91,7 @@ export const MicPermission: React.FC<MicPermissionProps> = ({
   disabled = false,
   href,
   linkTarget = '_blank',
+  onLinkClick,
 }) => {
   const pending = live.permission === 'pending';
   const blocked = live.permission === 'blocked';
@@ -125,7 +128,8 @@ export const MicPermission: React.FC<MicPermissionProps> = ({
                   <a
                     href={href}
                     target={linkTarget}
-                    rel='noopener noreferrer'
+                    rel={linkTarget === '_blank' ? 'noopener' : undefined}
+                    onClick={() => onLinkClick?.(href)}
                     className='underline text-fg'
                   >
                     open the tone on TONE3000

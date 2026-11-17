@@ -9,6 +9,8 @@ interface ToneHeaderProps {
   /** `default` for the full layout, `dense` for compact playlists. */
   variant?: 'default' | 'dense';
   linkTarget?: '_blank' | '_self';
+  /** A tone (title, image) or author link was followed. */
+  onLinkClick?: (target: 'tone' | 'author', href: string) => void;
 }
 
 // Image sizes sit just under a two-line title plus the facts row (~72px /
@@ -26,10 +28,15 @@ export const ToneHeader: React.FC<ToneHeaderProps> = ({
   meta,
   variant = 'default',
   linkTarget = '_blank',
+  onLinkClick,
 }) => {
   const s = SIZES[variant];
-  const rel = linkTarget === '_blank' ? 'noopener noreferrer' : undefined;
+  // `noopener` only: the destination may see which page linked to it.
+  const rel = linkTarget === '_blank' ? 'noopener' : undefined;
   const { author } = meta;
+  const toneClicked = () => {
+    if (meta.href) onLinkClick?.('tone', meta.href);
+  };
   const hasFacts = !!(meta.subtitle || meta.format || author);
 
   const image = (
@@ -82,6 +89,7 @@ export const ToneHeader: React.FC<ToneHeaderProps> = ({
           target={linkTarget}
           rel={rel}
           aria-label={meta.title}
+          onClick={toneClicked}
           className='flex-shrink-0'
         >
           {image}
@@ -95,6 +103,7 @@ export const ToneHeader: React.FC<ToneHeaderProps> = ({
             href={meta.href}
             target={linkTarget}
             rel={rel}
+            onClick={toneClicked}
             className='min-w-0 cursor-pointer'
           >
             {title}
@@ -121,6 +130,7 @@ export const ToneHeader: React.FC<ToneHeaderProps> = ({
                   href={author.href}
                   target={linkTarget}
                   rel={rel}
+                  onClick={() => onLinkClick?.('author', author.href!)}
                   className='min-w-0 max-w-full cursor-pointer'
                 >
                   {authorName}

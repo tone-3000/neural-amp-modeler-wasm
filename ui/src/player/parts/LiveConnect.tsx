@@ -13,7 +13,10 @@ const MIN_HEIGHT = 'min-h-[150px]';
 function EmbedDenied({
   href,
   linkTarget,
-}: Pick<LiveConnectProps, 'href' | 'linkTarget'>) {
+  onOpen,
+}: Pick<LiveConnectProps, 'href' | 'linkTarget'> & {
+  onOpen: (href: string) => void;
+}) {
   return (
     <div className={`flex flex-col justify-center gap-4 ${MIN_HEIGHT}`}>
       <Alert variant='warning'>
@@ -29,7 +32,10 @@ function EmbedDenied({
         <div>
           <Button
             variant='secondary'
-            onClick={() => window.open(href, linkTarget)}
+            onClick={() => {
+              onOpen(href);
+              window.open(href, linkTarget);
+            }}
           >
             Open on TONE3000
           </Button>
@@ -67,7 +73,13 @@ export const LiveConnect: React.FC<LiveConnectProps> = ({
     microphoneAllowedByPolicy() === false &&
     (live.status === 'connect' || live.status === 'blocked')
   ) {
-    return <EmbedDenied href={href} linkTarget={linkTarget} />;
+    return (
+      <EmbedDenied
+        href={href}
+        linkTarget={linkTarget}
+        onOpen={url => c.linkClicked('tone', url)}
+      />
+    );
   }
 
   if (live.status === 'connecting' || live.status === 'pending') {

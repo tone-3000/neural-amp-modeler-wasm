@@ -2,6 +2,7 @@ import React, { useCallback, useRef } from 'react';
 import { T3kPlayerProps } from '../types';
 import { usePlayer } from './hooks/usePlayer';
 import { useRootResize } from './hooks/useRootResize';
+import { useRootVisible } from './hooks/useRootVisible';
 import { MiniLayout } from './layouts/MiniLayout';
 import { PanelLayout } from './layouts/PanelLayout';
 
@@ -58,10 +59,17 @@ export const T3kPlayer: React.FC<T3kPlayerProps> = props => {
     []
   );
   useRootResize(rootRef, onEvent ? reportHeight : undefined);
+  const reportVisible = useCallback(
+    () => onEventRef.current?.({ type: 'visible' }),
+    []
+  );
+  useRootVisible(rootRef, onEvent ? reportVisible : undefined);
 
   const status = isLoading ? 'loading' : disabled ? 'disabled' : 'ready';
   const disabledReason =
     typeof disabled === 'object' ? disabled.reason : undefined;
+  const attributionHref =
+    typeof attribution === 'object' ? attribution.href : undefined;
 
   return (
     <div
@@ -84,7 +92,8 @@ export const T3kPlayer: React.FC<T3kPlayerProps> = props => {
           status={status}
           disabledReason={disabledReason}
           headerSlot={headerSlot}
-          attribution={attribution}
+          attribution={attribution !== false}
+          attributionHref={attributionHref}
           linkTarget={linkTarget}
           docked={docked}
           collapseTabs={collapseTabs}

@@ -189,7 +189,7 @@ Every panel is one stack: source tabs ("Sample" / "Plug in and play") with the a
 | `isLoading`       | `boolean`                        | `false`    | Skeleton state while the host fetches tones.                                                                                                        |
 | `theme`           | `'dark' \| 'light'`              | `'dark'`   | Both are token sheets on the root.                                                                                                                  |
 | `headerSlot`      | `ReactNode`                      | —          | Extra content on the playbar (e.g. an info icon).                                                                                                   |
-| `attribution`     | `boolean`                        | `true`     | TONE3000 logo link at the end of the tab row.                                                                                                       |
+| `attribution`     | `boolean \| { href?: string }`   | `true`     | TONE3000 logo link at the end of the tab row. Pass `{ href }` to choose where it links; defaults to `https://www.tone3000.com`.                     |
 | `linkTarget`      | `'_blank' \| '_self'`            | `'_blank'` | For `meta.href` links. Keep `_blank` inside iframes.                                                                                                |
 | `docked`          | `boolean`                        | `false`    | `compact`: flush under a card, which also carries the image and name, so the dense header is dropped.                                               |
 | `collapseTabs`    | `boolean`                        | `false`    | `compact`: put the source tabs / attribution row inside the collapsed content instead of at the top.                                                |
@@ -221,11 +221,18 @@ type PlayerEvent =
       value: Model | IR | Input | number;
     }
   | { type: 'bypass_change'; bypassed: boolean }
-  | { type: 'source_change'; mode: 'demo' | 'live' }
+  | { type: 'source_change'; mode: 'demo' | 'live'; initiated: boolean }
   | { type: 'view_change'; view: 'controls' | 'settings' }
   | { type: 'expand' }
   | { type: 'collapse' }
   | { type: 'resize'; height: number }
+  | { type: 'visible' }
+  | {
+      type: 'link_click';
+      target: 'tone' | 'author' | 'attribution';
+      href: string;
+      toneId;
+    }
   | {
       type: 'error';
       toneId?;
@@ -234,7 +241,11 @@ type PlayerEvent =
     };
 ```
 
-Every `play` is followed by exactly one `pause` or `ended` for that tone — including when another player on the page takes over, or when the user switches tones inside a playlist.
+Every `play` is followed by exactly one `pause` or `ended` for that tone — including when another player on the page takes over, or when the user switches tones inside a playlist. That holds for live input too: `play` with `mode: 'live'` is monitoring starting, and its `pause` is monitoring stopping.
+
+- `source_change` comes from every player under the provider, because the source tab is page-wide. `initiated` is `true` only on the player whose tab was clicked.
+- `visible` fires once per mount, when at least half the player has been on screen for a second with the tab in the foreground. Inside an iframe it follows the host page's viewport, so it tells "scrolled into view" apart from "the frame loaded".
+- `link_click` fires when one of the player's own links is followed: the tone (title or image, from `meta.href`), its author (`meta.author.href`), or the attribution logo. `toneId` is the tone showing at the time. These links open with `rel="noopener"` only, so the destination sees the linking page as its referrer.
 
 ## Embedding in an iframe
 
@@ -281,6 +292,8 @@ document.addEventListener('t3k:play', e =>
   analytics.track('player_play', e.detail)
 );
 ```
+
+Inside the frame, `bridge.hostOrigin` is the origin of the page that embedded it (`https://example.com`), or `null` when it can't be told. It comes from the host script's handshake when there is one, and otherwise from what the browser reports (`location.ancestorOrigins`, then the referrer).
 
 Messages are versioned (`v: 1`) and verified by `event.source` and the frame's origin on the host side. Types and guards are exported from `neural-amp-modeler-wasm/embed`.
 

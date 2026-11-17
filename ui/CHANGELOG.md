@@ -1,5 +1,32 @@
 # Changelog
 
+## 3.2.0
+
+### Added
+
+- `visible` event: once per mount, when at least half the player has been on
+  screen for a second with the tab in the foreground. Inside an iframe it
+  follows the host page's viewport, so a host can tell "scrolled into view"
+  from "the frame loaded".
+- `link_click` event when one of the player's links is followed, with
+  `target` (`'tone'` for the title, image and the blocked-live fallback
+  link; `'author'`; `'attribution'` for the logo), `href` and the `toneId`
+  showing at the time.
+- `attribution` accepts `{ href }` to choose where the TONE3000 logo links
+  to. `true` (the default) still links to `https://www.tone3000.com`.
+- `source_change` carries `initiated`: `true` only on the player whose tab
+  was clicked. The source tab is page-wide, so every player under the
+  provider reports the switch; this tells the click apart from the echo.
+- `useEmbedBridge()` returns `hostOrigin`, the origin of the page embedding
+  the frame: from the host script's handshake when present, otherwise from
+  `location.ancestorOrigins` or the referrer; `null` when unknown.
+
+### Changed
+
+- The player's outbound links (tone, author, attribution) use
+  `rel="noopener"` instead of `noopener noreferrer`, so the destination sees
+  the linking page as its referrer.
+
 ## 3.1.0
 
 ### Changed

@@ -109,6 +109,7 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({
           disabled={disabled}
           href={href}
           linkTarget={linkTarget}
+          onLinkClick={url => c.linkClicked('tone', url)}
         />
       </div>
     );

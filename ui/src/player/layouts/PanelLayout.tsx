@@ -19,6 +19,8 @@ export interface PanelLayoutProps {
   disabledReason?: string;
   headerSlot?: ReactNode;
   attribution: boolean;
+  /** Where the attribution logo links to; the part's default when omitted. */
+  attributionHref?: string;
   linkTarget: '_blank' | '_self';
   /** Drop the top border + radius so the panel docks under a host card. */
   docked: boolean;
@@ -67,6 +69,7 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
   disabledReason,
   headerSlot,
   attribution,
+  attributionHref,
   linkTarget,
   docked,
   collapseTabs,
@@ -124,7 +127,13 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
       ) : (
         <span />
       )}
-      {attribution && <PoweredBy className='py-3' />}
+      {attribution && (
+        <PoweredBy
+          href={attributionHref}
+          onClick={href => c.linkClicked('attribution', href)}
+          className='py-3'
+        />
+      )}
     </div>
   );
 
@@ -230,6 +239,7 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
               meta={meta}
               variant={isFull ? 'default' : 'dense'}
               linkTarget={linkTarget}
+              onLinkClick={c.linkClicked}
             />
           ) : (
             <span className='flex-1 text-sm text-muted'>

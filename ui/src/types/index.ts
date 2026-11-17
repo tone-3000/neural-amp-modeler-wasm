@@ -273,11 +273,36 @@ export type PlayerEvent =
     }
   | { type: 'selection_change'; toneId: string; field: 'mix'; value: number }
   | { type: 'bypass_change'; bypassed: boolean }
-  | { type: 'source_change'; mode: SourceMode }
+  | {
+      type: 'source_change';
+      mode: SourceMode;
+      /**
+       * The source tab is page-wide, so every player under the provider
+       * reports the switch. `true` only on the one whose tab was clicked.
+       */
+      initiated: boolean;
+    }
   | { type: 'view_change'; view: PlayerView }
   | { type: 'expand' }
   | { type: 'collapse' }
   | { type: 'resize'; height: number }
+  /**
+   * Once per mount: at least half the player has been on screen for a
+   * second, with the tab in the foreground. Inside an iframe this follows
+   * the host page's viewport.
+   */
+  | { type: 'visible' }
+  /**
+   * One of the player's links was followed: the tone (title, image, or the
+   * "open the tone" fallback of a blocked live tab), its author, or the
+   * attribution logo. `toneId` is the tone showing at the time.
+   */
+  | {
+      type: 'link_click';
+      target: 'tone' | 'author' | 'attribution';
+      href: string;
+      toneId: string;
+    }
   | {
       type: 'error';
       toneId?: string;
@@ -319,8 +344,13 @@ export interface T3kPlayerProps {
   theme?: PlayerTheme;
   /** Rendered at the right end of the playbar (e.g. an info button). */
   headerSlot?: ReactNode;
-  /** Show the TONE3000 logo link ("Powered by TONE3000"). Defaults to `true`. */
-  attribution?: boolean;
+  /**
+   * Show the TONE3000 logo link ("Powered by TONE3000"). Defaults to `true`.
+   * Pass an object to choose where the logo links to (e.g. a page of yours
+   * on tone3000.com, or the same URL with your own query string); it
+   * defaults to `https://www.tone3000.com`.
+   */
+  attribution?: boolean | { href?: string };
   /** `_blank` for embeds (default), `_self` for in-app. Applies to meta links. */
   linkTarget?: '_blank' | '_self';
   /**

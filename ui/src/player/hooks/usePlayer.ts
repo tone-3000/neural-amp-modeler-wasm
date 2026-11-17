@@ -46,6 +46,9 @@ export interface ControlLabels {
 /** Which asset list a select is bound to. */
 export type SlotField = 'model' | 'ir' | 'preModel';
 
+/** Where a link in the player leads. */
+export type LinkTarget = Extract<PlayerEvent, { type: 'link_click' }>['target'];
+
 /** A select over one asset slot: options, current value, setter. */
 export interface SlotControl {
   field: SlotField;
@@ -110,6 +113,8 @@ export interface PlayerController {
   setPreModel: (url: string) => Promise<void>;
   setSourceMode: (mode: SourceMode) => Promise<void>;
   prepareTone: (toneId: string) => Promise<void>; // resolve assets without playing
+  /** Announce that one of the player's links was followed (`link_click`). */
+  linkClicked: (target: LinkTarget, href: string) => void;
 
   // Refs for the waveform
   visualizerRef: React.RefObject<HTMLCanvasElement>;
@@ -770,13 +775,22 @@ export function usePlayer(options: Options): PlayerController {
 
   // Every player reports the page-wide switch and drops back to its controls
   // (a settings view open in one player shouldn't survive a tab change).
+  // `initiated` singles out the player whose tab was clicked; the owner is
+  // set in the same update as the mode, so it is current here.
   const prevSourceModeRef = useRef(sourceMode);
+  const initiated = source.owner === playerId;
   useEffect(() => {
     if (prevSourceModeRef.current === sourceMode) return;
     prevSourceModeRef.current = sourceMode;
     dispatch({ type: 'view/set', view: 'controls' });
-    emit({ type: 'source_change', mode: sourceMode });
-  }, [sourceMode, emit]);
+    emit({ type: 'source_change', mode: sourceMode, initiated });
+  }, [sourceMode, initiated, emit]);
+
+  const linkClicked = useCallback(
+    (target: LinkTarget, href: string) =>
+      emit({ type: 'link_click', target, href, toneId: activeToneId }),
+    [emit, activeToneId]
+  );
 
   // Live setup (permission → interface). Monitoring starts when the user
   // picks an interface, not on the first automatic connection (see
@@ -844,6 +858,7 @@ export function usePlayer(options: Options): PlayerController {
     setPreModel,
     setSourceMode,
     prepareTone,
+    linkClicked,
 
     visualizerRef,
     canvasWrapperRef,

@@ -146,11 +146,12 @@ const Preview: React.FC = () => {
 
             <Section
               title='single · full · library'
-              note='The whole model list in one tone (v2 default player).'
+              note='The whole model list in one tone (v2 default player). The logo links to a profile via attribution={{ href }}.'
             >
               <T3kPlayer
                 tones={[libraryTone]}
                 layout='full'
+                attribution={{ href: 'https://www.tone3000.com/tone3000' }}
                 onEvent={log('library')}
               />
             </Section>

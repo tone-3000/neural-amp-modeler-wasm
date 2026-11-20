@@ -2,6 +2,7 @@ import './index.css';
 
 // Player
 export { T3kPlayer } from './player/T3kPlayer';
+export { T3kPlayButton, type T3kPlayButtonProps } from './player/T3kPlayButton';
 export { T3kPlayerProvider } from './context/T3kPlayerProvider';
 export {
   T3kPlayerContextProvider,
@@ -18,6 +19,7 @@ export { irInBandGainDb } from './audio/irGain';
 export { NO_IR, NO_MODEL } from './types';
 export type {
   T3kPlayerProps,
+  T3kPlayerHandle,
   PlayerTone,
   PlayerAssets,
   ToneMeta,

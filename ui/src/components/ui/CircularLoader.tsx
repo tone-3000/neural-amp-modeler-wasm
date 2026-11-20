@@ -9,8 +9,11 @@ export const CircularLoader: React.FC<CircularLoaderProps> = ({
   size = 40,
   color = 'var(--t3k-on-accent)',
 }) => {
-  const circleSize = size - 20;
-  const strokeWidth = 3;
+  // A ring half as wide as the disc with a 3px stroke at 40px (the sizes it
+  // was drawn for are unchanged), and in proportion below that: at 24px a
+  // fixed 20px margin and 3px stroke left a dot.
+  const circleSize = Math.max(size - 20, size / 2);
+  const strokeWidth = Math.min(3, (size * 3) / 40);
   const radius = (circleSize - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 

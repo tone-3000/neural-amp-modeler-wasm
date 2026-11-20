@@ -1,9 +1,10 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { InfoIcon } from 'lucide-react';
 import { T3kPlayer } from './player/T3kPlayer';
+import { T3kPlayButton } from './player/T3kPlayButton';
 import { T3kPlayerProvider } from './context/T3kPlayerProvider';
-import { PlayerEvent } from './types';
+import { PlayerEvent, PlayerTone, T3kPlayerHandle } from './types';
 import { cabTone, demoTone, libraryTone, spaceTone } from './demo/tones';
 import './index.css';
 
@@ -54,6 +55,83 @@ const EventLog = ({ events }: { events: string[] }) => (
       : 'Events from every player appear here.'}
   </pre>
 );
+
+const PINNED_TONES = [4, 5, 6].map(i => demoTone(i, { lazy: true }));
+
+/**
+ * One player pinned to the page, holding one tone at a time, started from
+ * buttons elsewhere: the buttons' state comes from the player's events, and
+ * the player is driven through its ref.
+ */
+const PinnedDemo = ({ onEvent }: { onEvent: (e: PlayerEvent) => void }) => {
+  const player = useRef<T3kPlayerHandle>(null);
+  const [tone, setTone] = useState<PlayerTone | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  // Counts presses: the player must have rendered a tone before it can play
+  // it, so the press is acted on in an effect.
+  const [press, setPress] = useState(0);
+
+  useEffect(() => {
+    if (!tone) return;
+    const { id } = tone;
+    void player.current
+      ?.play(id)
+      .finally(() => setBusyId(busy => (busy === id ? null : busy)));
+    // Only a press plays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [press]);
+
+  const toggle = (next: PlayerTone) => {
+    if (busyId === next.id) return;
+    player.current?.pause();
+    if (playingId === next.id) return;
+    setTone(next);
+    setBusyId(next.id);
+    setPress(n => n + 1);
+  };
+
+  return (
+    <>
+      <div className='flex flex-wrap gap-6'>
+        {PINNED_TONES.map(t => (
+          <div key={t.id} className='flex items-center gap-3'>
+            <T3kPlayButton
+              label={t.meta?.title}
+              isPlaying={playingId === t.id}
+              isBusy={busyId === t.id}
+              onClick={() => toggle(t)}
+            />
+            <span className='text-sm'>{t.meta?.title}</span>
+          </div>
+        ))}
+      </div>
+      {tone && (
+        <div className='fixed inset-x-0 bottom-0 z-10'>
+          <T3kPlayer
+            ref={player}
+            id='pinned'
+            tones={[tone]}
+            layout='bar'
+            pinned
+            onClose={() => {
+              setTone(null);
+              setPlayingId(null);
+              setBusyId(null);
+            }}
+            onEvent={e => {
+              if (e.type === 'play') setPlayingId(e.toneId);
+              if (e.type === 'pause' || e.type === 'ended') {
+                setPlayingId(id => (id === e.toneId ? null : id));
+              }
+              onEvent(e);
+            }}
+          />
+        </div>
+      )}
+    </>
+  );
+};
 
 const Preview: React.FC = () => {
   const [events, setEvents] = useState<string[]>([]);
@@ -215,6 +293,34 @@ const Preview: React.FC = () => {
                 layout='compact'
                 onEvent={log('matrix')}
               />
+            </Section>
+
+            <Section
+              title='single · bar'
+              note='One row: the tone, the transport, the waveform. In a narrow column it is the tone and its buttons.'
+            >
+              <div className='flex flex-col gap-4'>
+                <T3kPlayer
+                  tones={[demoTone(0)]}
+                  layout='bar'
+                  onEvent={log('bar')}
+                />
+                <div style={{ maxWidth: 390 }}>
+                  <T3kPlayer
+                    tones={[demoTone(1)]}
+                    layout='bar'
+                    live={false}
+                    onEvent={log('bar-narrow')}
+                  />
+                </div>
+              </div>
+            </Section>
+
+            <Section
+              title='single · bar · pinned'
+              note='One player along the bottom of the page, started from play buttons elsewhere through its ref. ✕ unmounts it.'
+            >
+              <PinnedDemo onEvent={log('pinned')} />
             </Section>
 
             <Section title='statuses'>

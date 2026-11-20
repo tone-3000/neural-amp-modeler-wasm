@@ -101,6 +101,8 @@ export interface PlayerController {
 
   // Actions
   togglePlay: (toneId?: string) => Promise<void>;
+  /** Stop whichever of this player's tones is playing. */
+  pause: () => void;
   activateTone: (toneId: string) => Promise<void>;
   step: (delta: 1 | -1) => Promise<void>;
   skipToStart: () => void;
@@ -301,6 +303,16 @@ export function usePlayer(options: Options): PlayerController {
     emit({ type: 'ready' });
   }, [emit]);
 
+  // A play that is still loading when the player unmounts must not start:
+  // nothing would be left on the page to stop it.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // Only tear down playback if this player owns it; another player on the
   // page may be mid-song when a card scrolls out and unmounts.
   useEffect(() => {
@@ -365,6 +377,9 @@ export function usePlayer(options: Options): PlayerController {
     };
     const onMeta = () => setDuration(element.duration);
     if (element.duration) setDuration(element.duration);
+    // Where the clip is now: it may have been loaded or played by another
+    // tone since this one last heard from it.
+    setCurrentTime(element.currentTime);
 
     element.addEventListener('timeupdate', onTime);
     element.addEventListener('ended', onEnded);
@@ -407,6 +422,7 @@ export function usePlayer(options: Options): PlayerController {
       await init();
       await reconnectLiveInput();
       await syncToEngine(sel);
+      if (!mountedRef.current) return;
       setPlaying(true, compositeId(toneId));
       const deviceId = getGraph()?.live?.deviceId;
       emit({
@@ -437,6 +453,7 @@ export function usePlayer(options: Options): PlayerController {
       stopLiveInput();
       await loadAudio(sel.input.url);
       await syncToEngine(sel);
+      if (!mountedRef.current) return;
       setPlaying(true, compositeId(toneId));
       emit({ type: 'play', mode: 'demo', toneId, selection: sel });
     },
@@ -488,6 +505,14 @@ export function usePlayer(options: Options): PlayerController {
       fail,
     ]
   );
+
+  // Ownership is read from the ref: the tone playing may have left `tones`
+  // since (a host swapping the tone of a single-tone player).
+  const pause = useCallback(() => {
+    if (activePlayerIdRef.current?.startsWith(`${playerId}:`)) {
+      setPlaying(false); // `pause` is emitted by the ownership effect
+    }
+  }, [playerId, setPlaying]);
 
   /** Make a tone active; if this player is mid-playback, switch audibly. */
   const activateTone = useCallback(
@@ -846,6 +871,7 @@ export function usePlayer(options: Options): PlayerController {
     preModelOptions,
 
     togglePlay,
+    pause,
     activateTone,
     step,
     skipToStart,

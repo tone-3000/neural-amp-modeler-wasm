@@ -1,5 +1,41 @@
 # Changelog
 
+## 3.3.0
+
+### Added
+
+- `ref` on `T3kPlayer`: `play(toneId?)` and `pause()`, for controls that live
+  outside the player. `play` starts the active tone, or switches to `toneId`
+  first; it resolves once playback has started or failed and never throws
+  (failures are `error` events, as before).
+- `T3kPlayButton`: the player's play / pause / loading button on its own. It
+  holds no state and needs no provider; a host derives `isPlaying` and
+  `isBusy` from the events of the player it drives.
+- `layout='bar'`: the player in one row — image, title and author, then the
+  transport, waveform and time — with the source tabs and controls behind
+  the toggle. It sizes to its own width: under 600px it is the tone, play,
+  the toggle and ✕, without the waveform, skip and time. Single tone only; a
+  playlist renders `compact`.
+- `pinned` (all but `mini`): square corners and a top border only, for a
+  player along the bottom edge of the page. What `compact` and `bar` open
+  then scrolls within itself on a screen too short for it, so the playbar
+  stays in view. Takes precedence over
+  `docked`.
+- `onClose` (all but `mini`): a close button at the end of the tone header,
+  or of the playbar when there is no header.
+
+Together these let a page keep one pinned player and start it from a button
+on each card. See "One player for the page" in the README.
+
+### Fixed
+
+- The waveform kept the width it had when playback started, so it drew
+  stretched or cropped after the player was resized. It now follows the
+  canvas.
+
+- A play that was still loading when its player unmounted went on to start,
+  leaving audio with nothing on the page to stop it. It is now dropped.
+
 ## 3.2.0
 
 ### Added

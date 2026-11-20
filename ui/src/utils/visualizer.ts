@@ -64,12 +64,22 @@ export const setupVisualizer = (
   let running = true;
 
   (async () => {
-    const { height, width } = canvas;
-    const gap = width / analyzeResultArray.length;
-    const gradient = makeGradient(canvasCtx, width, useGradient);
+    const { height } = canvas;
+    // The canvas is resized with its wrapper, and has no width at all while
+    // a layout hides the waveform (`bar`, when narrow).
+    let width = -1;
+    let gap = 0;
+    let gradient = makeGradient(canvasCtx, 0, useGradient);
 
     for await (const _ of rafIter()) {
       if (!running) break;
+
+      if (canvas.width !== width) {
+        width = canvas.width;
+        gap = width / analyzeResultArray.length;
+        gradient = makeGradient(canvasCtx, width, useGradient);
+      }
+      if (width === 0) continue;
 
       analyzer.getByteTimeDomainData(analyzeResultArray);
 

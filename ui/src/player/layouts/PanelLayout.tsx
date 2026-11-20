@@ -3,6 +3,8 @@ import { Tabs } from '../../components/ui/Tabs';
 import { SourceMode } from '../../types';
 import { PlayerController } from '../hooks/usePlayer';
 import { AudioSettings } from '../parts/AudioSettings';
+import { BarRow } from '../parts/BarRow';
+import { CloseButton } from '../parts/CloseButton';
 import { Controls } from '../parts/Controls';
 import { ControlsSkeleton } from '../parts/ControlsSkeleton';
 import { LiveConnect } from '../parts/LiveConnect';
@@ -13,7 +15,7 @@ import { ToneHeader } from '../parts/ToneHeader';
 
 export interface PanelLayoutProps {
   controller: PlayerController;
-  layout: 'compact' | 'full';
+  layout: 'compact' | 'full' | 'bar';
   live: boolean;
   status: 'ready' | 'loading' | 'disabled';
   disabledReason?: string;
@@ -26,6 +28,10 @@ export interface PanelLayoutProps {
   docked: boolean;
   /** `compact`: tabs / attribution open with the controls, not on top. */
   collapseTabs: boolean;
+  /** Along the bottom of the page: square, top border only. */
+  pinned: boolean;
+  /** Renders the close button. */
+  onClose?: () => void;
 }
 
 const SOURCE_TABS: { mode: SourceMode; label: string }[] = [
@@ -36,7 +42,7 @@ const SOURCE_TABS: { mode: SourceMode; label: string }[] = [
 const SECTION = 'px-4 sm:px-6';
 
 /**
- * `compact` and `full` are one set of sections in two orders.
+ * `compact`, `full` and `bar` are one set of sections in three arrangements.
  *
  * `full` (tone page, share embed):
  *
@@ -60,6 +66,20 @@ const SECTION = 'px-4 sm:px-6';
  *   [ playbar                                        ⌄ ]
  *   [ Sample | Plug in and play              TONE3000 ]   ┐ expanded
  *   [ controls | live setup wizard | play live         ]   ┘
+ *
+ * `bar`: the header and the playbar are one row (parts/BarRow), and the
+ * tabs always open with the body.
+ *
+ *   [ image  title   ▶ ⏮  waveform  0:08 / 0:25    ⌄ ]
+ *   [ Sample | Plug in and play              TONE3000 ]   ┐ expanded
+ *   [ controls | live setup wizard | play live         ]   ┘
+ *
+ * `pinned` is any of these with square corners and only a top border, for a
+ * player along the bottom edge of the page. It opens the same way, under the
+ * playbar; what opens scrolls within itself on a screen too short for it.
+ *
+ * `onClose` adds ✕ to the end of the header, or of the playbar when there
+ * is no header.
  */
 export const PanelLayout: React.FC<PanelLayoutProps> = ({
   controller: c,
@@ -73,16 +93,22 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
   linkTarget,
   docked,
   collapseTabs,
+  pinned,
+  onClose,
 }) => {
   const isPlaylist = c.tones.length > 1;
   const isFull = layout === 'full';
-  const tabsOnTop = isFull || !collapseTabs;
+  const isBar = layout === 'bar';
+  const tabsOnTop = isFull || (!isBar && !collapseTabs);
   const inert = status !== 'ready';
   const isLive = live && c.sourceMode === 'live';
   const meta = c.activeTone.meta;
   // `compact` docked under a card leaves the image and name to the card; a
-  // standalone compact bar (share embed) carries them in the dense header.
-  const showHeader = isPlaylist || (!!meta && (isFull || !docked));
+  // standalone compact bar (share embed, pinned to the page) carries them in
+  // the dense header.
+  const underCard = docked && !pinned;
+  const showHeader =
+    !isBar && (isPlaylist || (!!meta && (isFull || !underCard)));
   const showTabBar = live || attribution;
   const assetError =
     c.activeAssets.status === 'error' ? c.activeAssets.message : null;
@@ -137,11 +163,33 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
     </div>
   );
 
-  const playbar = (
+  const closeButton = onClose && (
+    <CloseButton onClick={onClose} className='t3k-header-close p-0' />
+  );
+
+  const playbar = isBar ? (
+    <BarRow
+      controller={c}
+      disabled={inert}
+      linkTarget={linkTarget}
+      headerSlot={headerSlot}
+      expandToggle={!inert}
+      onClose={onClose}
+    />
+  ) : (
     <Playbar
       controller={c}
       disabled={inert}
-      headerSlot={headerSlot}
+      headerSlot={
+        showHeader ? (
+          headerSlot
+        ) : (
+          <>
+            {headerSlot}
+            {closeButton}
+          </>
+        )
+      }
       expandToggle={!isFull && !inert}
     />
   );
@@ -186,6 +234,21 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
     );
   }
 
+  // What the chevron opens (`compact`, `bar`).
+  let expanded: ReactNode = null;
+  if (!isFull && !inert && c.expanded) {
+    expanded = (
+      <>
+        {!tabsOnTop && tabBar}
+        <div className={`${SECTION} t3k-body py-4 sm:py-5`}>
+          {livePanel ?? controls}
+        </div>
+      </>
+    );
+    // Held to the page's edge, the player grows upward: keep it on screen.
+    if (pinned) expanded = <div className='t3k-pinned-panel'>{expanded}</div>;
+  }
+
   let body: ReactNode;
   if (isFull) {
     body = (
@@ -199,31 +262,25 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
     );
   } else {
     body = (
-      <>
-        {/* No vertical padding: the bar's own 80px min-height / 90px canvas
-            is the collapsed height, same as the v2 accordion. */}
-        <div className={SECTION}>
-          {playbar}
-          {status === 'disabled' && disabledReason && (
-            <p className='text-sm text-muted -mt-1 pb-3'>{disabledReason}</p>
-          )}
-        </div>
-        {!inert && c.expanded && (
-          <>
-            {!tabsOnTop && tabBar}
-            <div className={`${SECTION} t3k-body py-4 sm:py-5`}>
-              {livePanel ?? controls}
-            </div>
-          </>
+      // No vertical padding: the bar's own min-height (80px, a 90px canvas;
+      // 72px in `bar`) is the collapsed height, same as the v2 accordion.
+      <div className={isBar ? `${SECTION} t3k-bar` : SECTION}>
+        {playbar}
+        {status === 'disabled' && disabledReason && (
+          <p className='text-sm text-muted -mt-1 pb-3'>{disabledReason}</p>
         )}
-      </>
+      </div>
     );
   }
 
   return (
     <div
-      className={`bg-surface border border-line text-fg w-full flex flex-col overflow-hidden ${
-        docked ? 'rounded-b-t3k border-t-0' : 'rounded-t3k'
+      className={`bg-surface border-line text-fg w-full flex flex-col overflow-hidden ${
+        pinned
+          ? 'border-t'
+          : docked
+            ? 'border border-t-0 rounded-b-t3k'
+            : 'border rounded-t3k'
       } ${inert ? 'opacity-50' : ''}`}
       aria-busy={status === 'loading' || undefined}
       aria-disabled={status === 'disabled' || undefined}
@@ -246,6 +303,8 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
               Tone {c.activeIndex + 1}
             </span>
           )}
+          {/* Ahead of the pager in the DOM, after it on screen (index.css). */}
+          {closeButton}
           {isPlaylist && (
             <Pager
               index={c.activeIndex}
@@ -259,6 +318,8 @@ export const PanelLayout: React.FC<PanelLayoutProps> = ({
       )}
 
       {body}
+
+      {expanded}
     </div>
   );
 };

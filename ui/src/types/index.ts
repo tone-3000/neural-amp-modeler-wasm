@@ -220,8 +220,11 @@ export interface PlayerTone {
  * - `compact`: source tabs + playbar; controls collapsed behind a toggle. Full
  *   player minus the tone header (playlists keep a dense header for the pager).
  * - `full`: tone header + playbar + controls, always expanded.
+ * - `bar`: one row — the tone, the transport, the waveform — with the source
+ *   tabs and controls behind a toggle. As the row narrows it sheds the
+ *   waveform, time and header slot. Single tone only.
  */
-export type PlayerLayout = 'mini' | 'compact' | 'full';
+export type PlayerLayout = 'mini' | 'compact' | 'full' | 'bar';
 
 /** Both themes ship as token sheets; `dark` is the default. */
 export type PlayerTheme = 'dark' | 'light';
@@ -313,10 +316,13 @@ export type PlayerEvent =
 export interface T3kPlayerProps {
   /** One tone renders the single-tone player; two or more render a playlist. */
   tones: NonEmptyArray<PlayerTone>;
-  /** Defaults to `'full'`. Playlists do not support `'mini'`. */
+  /**
+   * Defaults to `'full'`. Playlists do not support `'mini'` or `'bar'`, and
+   * render `'compact'` instead.
+   */
   layout?: PlayerLayout;
   /**
-   * `compact` only: start expanded. A later change to `true` is honoured until
+   * `compact` / `bar`: start expanded. A later change to `true` is honoured until
    * the user toggles the panel, so an embed can open up once it learns the
    * host can't resize the frame.
    */
@@ -342,7 +348,10 @@ export interface T3kPlayerProps {
   isLoading?: boolean;
   /** Defaults to `'dark'`. */
   theme?: PlayerTheme;
-  /** Rendered at the right end of the playbar (e.g. an info button). */
+  /**
+   * Rendered at the right end of the playbar (e.g. an info button). `bar`
+   * shows it only while the row has room for the waveform.
+   */
   headerSlot?: ReactNode;
   /**
    * Show the TONE3000 logo link ("Powered by TONE3000"). Defaults to `true`.
@@ -364,9 +373,41 @@ export interface T3kPlayerProps {
    * the playbar is the whole collapsed player. Defaults to `false`.
    */
   collapseTabs?: boolean;
+  /**
+   * All but `mini`: square corners and a top border only, for a player
+   * pinned along the bottom edge of the page; usually `bar`. The host
+   * positions it. What a `compact` or `bar` opens scrolls within itself on
+   * a screen too short for it, so the playbar stays in view.
+   * Takes precedence over `docked`: nothing sits above a pinned player, so
+   * the tone header stays.
+   */
+  pinned?: boolean;
+  /**
+   * All but `mini`: show a close button at the end of the tone header (the
+   * playbar when there is no header, as in `bar`). The player does nothing
+   * else on its own; hosts usually respond by unmounting it, which stops
+   * playback.
+   */
+  onClose?: () => void;
   /** `mini` only: button diameter in px. Defaults to 40. */
   size?: number;
   /** Stable id for this player instance. Generated when omitted. */
   id?: string;
   onEvent?: (event: PlayerEvent) => void;
+}
+
+/**
+ * What a `ref` on `T3kPlayer` exposes, for controls that live outside the
+ * player: a play button on a card driving a player pinned to the page.
+ */
+export interface T3kPlayerHandle {
+  /**
+   * Start a tone: the active one, or `toneId`, switching to it first. Does
+   * nothing if that tone is already playing. Resolves once playback has
+   * started or failed; a failure is reported as an `error` event, never
+   * thrown. Call it from a user gesture, like any other playback.
+   */
+  play: (toneId?: string) => Promise<void>;
+  /** Stop whatever this player is playing. */
+  pause: () => void;
 }

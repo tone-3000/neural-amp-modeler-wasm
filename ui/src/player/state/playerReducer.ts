@@ -21,7 +21,7 @@ export type AssetsStatus =
  */
 export interface PlayerState {
   activeToneId: string;
-  /** `compact` layout only. `full` pins it to true; `mini` ignores it. */
+  /** `compact` and `bar` only. `full` pins it to true; `mini` ignores it. */
   expanded: boolean;
   /**
    * Which body the panel shows; `settings` is Live-only. (The Sample / Plug

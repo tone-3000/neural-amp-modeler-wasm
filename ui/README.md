@@ -4,7 +4,7 @@ This is a [TONE3000](https://tone3000.com) WebAssembly port of [Steve Atkinson's
 
 The engine is a lightweight single-threaded wasm module instantiated inside an AudioWorklet — an architecture inspired by [openDAW](https://github.com/andremichelle/openDAW)'s NAM integration. There is no SharedArrayBuffer, no COOP/COEP header requirement, and no separate wasm files to host: everything ships inside this package.
 
-Version 3 ships one `T3kPlayer` component for every surface — a mini play button, a compact bar that docks under a card, or the full player with a tone header — for one tone or a playlist, with a single `onEvent` stream and an embed bridge for iframes. See the [CHANGELOG](./CHANGELOG.md) for the v2 → v3 migration table.
+Version 3 ships one `T3kPlayer` component for every surface — a mini play button, a compact bar that docks under a card, a one-row bar for the bottom of the page, or the full player with a tone header — for one tone or a playlist, with a single `onEvent` stream and an embed bridge for iframes. See the [CHANGELOG](./CHANGELOG.md) for the v2 → v3 migration table.
 
 ![screenshot](https://raw.githubusercontent.com/tone-3000/neural-amp-modeler-wasm/refs/heads/main/ui/public/screenshot.png)
 
@@ -170,32 +170,37 @@ const tones = DEFAULT_MODELS.map(model => ({
 | `mini`    | A play/pause button. The tone title is the accessible label.                                                                           | no       |
 | `compact` | Source tabs + playbar; controls behind a toggle. Dense header (image, title) unless `docked`; playlists always get it, with the pager. | yes      |
 | `full`    | Tone header + playbar + controls, always expanded.                                                                                     | yes      |
+| `bar`     | One row: image, title and author, then the transport, waveform and time; source tabs and controls behind a toggle.                     | no       |
 
 Every panel is one stack: source tabs ("Sample" / "Plug in and play") with the attribution, tone header, playbar, then the body. The source tab is shared by every player under one `T3kPlayerProvider`: switching one player to live switches the page (and stops whatever was playing), so a connected interface works in every player without configuring each one. The body shows the controls, or — on the live tab — the connect flow (permission, device discovery, per-browser unblock steps) and the inline audio settings (interface, output, input channel with meters). There is no dialog.
 
-`compact` with `docked` drops the top radius and border so it sits flush under a host card (the tone3000 search card pattern). `compact` with `collapseTabs` moves the tab row from the top into the collapsed content, under the playbar, so the playbar is the whole collapsed player. `mini` with more than one tone falls back to `compact` with a console warning.
+`compact` with `docked` drops the top radius and border so it sits flush under a host card. `pinned` squares the corners and keeps only the top border, for a bar along the bottom edge of the page (see [One player for the page](#one-player-for-the-page)). `compact` with `collapseTabs` moves the tab row from the top into the collapsed content, under the playbar, so the playbar is the whole collapsed player. `mini` or `bar` with more than one tone falls back to `compact` with a console warning.
+
+`bar` answers to its own width, not the viewport's. From 600px the tone holds a fixed share of the row, so the transport stays put from one tone to the next. Under 600px the row is the image, title, author, play, the toggle and ✕; the waveform, skip, time and `headerSlot` go.
 
 ## Props
 
-| Prop              | Type                             | Default    | Notes                                                                                                                                               |
-| ----------------- | -------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tones`           | `NonEmptyArray<PlayerTone>`      | —          |                                                                                                                                                     |
-| `layout`          | `'mini' \| 'compact' \| 'full'`  | `'full'`   |                                                                                                                                                     |
-| `defaultToneId`   | `string`                         | first      | Playlist: active tone on mount.                                                                                                                     |
-| `defaultExpanded` | `boolean`                        | `false`    | `compact`: start with controls open.                                                                                                                |
-| `live`            | `boolean`                        | `true`     | Show the Sample / Plug in and play tabs. In an iframe this needs `allow="microphone"` on the host's tag — see [Embedding](#embedding-in-an-iframe). |
-| `slimSize`        | `number`                         | —          | `[0, 1]` for slimmable (A2) models; omit for full size.                                                                                             |
-| `disabled`        | `boolean \| { reason?: string }` | `false`    | Renders the disabled state; `reason` is shown in the panel.                                                                                         |
-| `isLoading`       | `boolean`                        | `false`    | Skeleton state while the host fetches tones.                                                                                                        |
-| `theme`           | `'dark' \| 'light'`              | `'dark'`   | Both are token sheets on the root.                                                                                                                  |
-| `headerSlot`      | `ReactNode`                      | —          | Extra content on the playbar (e.g. an info icon).                                                                                                   |
-| `attribution`     | `boolean \| { href?: string }`   | `true`     | TONE3000 logo link at the end of the tab row. Pass `{ href }` to choose where it links; defaults to `https://www.tone3000.com`.                     |
-| `linkTarget`      | `'_blank' \| '_self'`            | `'_blank'` | For `meta.href` links. Keep `_blank` inside iframes.                                                                                                |
-| `docked`          | `boolean`                        | `false`    | `compact`: flush under a card, which also carries the image and name, so the dense header is dropped.                                               |
-| `collapseTabs`    | `boolean`                        | `false`    | `compact`: put the source tabs / attribution row inside the collapsed content instead of at the top.                                                |
-| `size`            | `number`                         | `40`       | `mini`: button diameter in px.                                                                                                                      |
-| `id`              | `string`                         | auto       | Stable id if you need to correlate events across remounts.                                                                                          |
-| `onEvent`         | `(event: PlayerEvent) => void`   | —          | See below.                                                                                                                                          |
+| Prop              | Type                                     | Default    | Notes                                                                                                                                                                                                                             |
+| ----------------- | ---------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tones`           | `NonEmptyArray<PlayerTone>`              | —          |                                                                                                                                                                                                                                   |
+| `layout`          | `'mini' \| 'compact' \| 'full' \| 'bar'` | `'full'`   |                                                                                                                                                                                                                                   |
+| `defaultToneId`   | `string`                                 | first      | Playlist: active tone on mount.                                                                                                                                                                                                   |
+| `defaultExpanded` | `boolean`                                | `false`    | `compact` / `bar`: start with controls open.                                                                                                                                                                                      |
+| `live`            | `boolean`                                | `true`     | Show the Sample / Plug in and play tabs. In an iframe this needs `allow="microphone"` on the host's tag — see [Embedding](#embedding-in-an-iframe).                                                                               |
+| `slimSize`        | `number`                                 | —          | `[0, 1]` for slimmable (A2) models; omit for full size.                                                                                                                                                                           |
+| `disabled`        | `boolean \| { reason?: string }`         | `false`    | Renders the disabled state; `reason` is shown in the panel.                                                                                                                                                                       |
+| `isLoading`       | `boolean`                                | `false`    | Skeleton state while the host fetches tones.                                                                                                                                                                                      |
+| `theme`           | `'dark' \| 'light'`                      | `'dark'`   | Both are token sheets on the root.                                                                                                                                                                                                |
+| `headerSlot`      | `ReactNode`                              | —          | Extra content on the playbar (e.g. an info icon). `bar` shows it from 600px wide.                                                                                                                                                 |
+| `attribution`     | `boolean \| { href?: string }`           | `true`     | TONE3000 logo link at the end of the tab row. Pass `{ href }` to choose where it links; defaults to `https://www.tone3000.com`.                                                                                                   |
+| `linkTarget`      | `'_blank' \| '_self'`                    | `'_blank'` | For `meta.href` links. Keep `_blank` inside iframes.                                                                                                                                                                              |
+| `docked`          | `boolean`                                | `false`    | `compact`: flush under a card, which also carries the image and name, so the dense header is dropped.                                                                                                                             |
+| `collapseTabs`    | `boolean`                                | `false`    | `compact`: put the source tabs / attribution row inside the collapsed content instead of at the top.                                                                                                                              |
+| `pinned`          | `boolean`                                | `false`    | All but `mini`: square corners and a top border only, for a player pinned to the bottom of the page. You position it. What `compact` and `bar` open then scrolls within itself on a short screen. Takes precedence over `docked`. |
+| `onClose`         | `() => void`                             | —          | All but `mini`: show a close button at the end of the tone header (the playbar when there is no header, as in `bar`).                                                                                                             |
+| `size`            | `number`                                 | `40`       | `mini`: button diameter in px.                                                                                                                                                                                                    |
+| `id`              | `string`                                 | auto       | Stable id if you need to correlate events across remounts.                                                                                                                                                                        |
+| `onEvent`         | `(event: PlayerEvent) => void`           | —          | See below.                                                                                                                                                                                                                        |
 
 ## Events
 
@@ -246,6 +251,88 @@ Every `play` is followed by exactly one `pause` or `ended` for that tone — inc
 - `source_change` comes from every player under the provider, because the source tab is page-wide. `initiated` is `true` only on the player whose tab was clicked.
 - `visible` fires once per mount, when at least half the player has been on screen for a second with the tab in the foreground. Inside an iframe it follows the host page's viewport, so it tells "scrolled into view" apart from "the frame loaded".
 - `link_click` fires when one of the player's own links is followed: the tone (title or image, from `meta.href`), its author (`meta.author.href`), or the attribution logo. `toneId` is the tone showing at the time. These links open with `rel="noopener"` only, so the destination sees the linking page as its referrer.
+
+## One player for the page
+
+Instead of a player per card, a page can keep one player pinned to its bottom edge and start it from a button on each card. Three pieces:
+
+- a `ref` on `T3kPlayer` gives `play(toneId?)` and `pause()`;
+- `T3kPlayButton` is the player's play / pause / loading button on its own. It holds no state and needs no provider;
+- `layout='bar'` with `pinned` and `onClose` is the player as one row along the page's edge, with a close button. Its controls open under the row, and scroll within themselves on a short screen.
+
+The bar's height changes when it is opened, so reserve room for it by measuring it (a `ResizeObserver` on your wrapper, or the `resize` event) rather than assuming one.
+
+```tsx
+import {
+  T3kPlayer,
+  T3kPlayButton,
+  type PlayerTone,
+  type T3kPlayerHandle,
+} from 'neural-amp-modeler-wasm';
+
+function Page({ tones }: { tones: PlayerTone[] }) {
+  const player = useRef<T3kPlayerHandle>(null);
+  const [tone, setTone] = useState<PlayerTone | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [press, setPress] = useState(0);
+
+  // The player must have rendered a tone before it can play it, so a press
+  // is acted on after the render it causes.
+  useEffect(() => {
+    if (!tone) return;
+    void player.current
+      ?.play(tone.id)
+      .finally(() => setBusyId(id => (id === tone.id ? null : id)));
+  }, [press]);
+
+  const toggle = (next: PlayerTone) => {
+    if (busyId === next.id) return;
+    player.current?.pause();
+    if (playingId === next.id) return;
+    setTone(next);
+    setBusyId(next.id);
+    setPress(n => n + 1);
+  };
+
+  return (
+    <>
+      {tones.map(t => (
+        <T3kPlayButton
+          key={t.id}
+          label={t.meta?.title}
+          isPlaying={playingId === t.id}
+          isBusy={busyId === t.id}
+          onClick={() => toggle(t)}
+        />
+      ))}
+      {tone && (
+        <div style={{ position: 'fixed', inset: 'auto 0 0 0' }}>
+          <T3kPlayer
+            ref={player}
+            tones={[tone]}
+            layout='bar'
+            pinned
+            onClose={() => {
+              setTone(null);
+              setPlayingId(null);
+              setBusyId(null);
+            }}
+            onEvent={e => {
+              if (e.type === 'play') setPlayingId(e.toneId);
+              if (e.type === 'pause' || e.type === 'ended') {
+                setPlayingId(id => (id === e.toneId ? null : id));
+              }
+            }}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+```
+
+`play()` resolves once playback has started or failed; failures arrive as `error` events and are never thrown. Unmounting a player that is playing stops it.
 
 ## Embedding in an iframe
 

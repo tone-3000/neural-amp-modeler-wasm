@@ -159,11 +159,65 @@
   container-type: inline-size;
   row-gap: 0.75rem;
 }
+/* The close button ends the row, after the pager; once the pager has dropped
+   to its own line it stays up beside the title. */
+.t3k-header-close {
+  order: 1;
+}
 @container (max-width: 447px) {
   .t3k-header-pager {
     flex-basis: 100%;
     justify-content: flex-end;
   }
+  .t3k-header-close {
+    order: 0;
+  }
+}
+
+/* `bar`: the tone, the transport and the waveform in one row. The row gives
+ * up what it has no room for as it narrows — the time, then the waveform,
+ * skip and header slot together — until it is the tone and the buttons that
+ * act on it. Container queries, so the row answers to the player's own width
+ * (content box) wherever it is put. */
+.t3k-bar {
+  container-type: inline-size;
+}
+/* Narrow, the tone takes whatever the buttons leave. Wide, it holds a fixed
+ * share of the row, so the transport doesn't move from one tone to the next. */
+.t3k-bar-meta {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+}
+/* Two classes deep: these must win over a display utility on the same
+ * element, including a host's own copy of it loaded after this sheet. */
+@container (min-width: 600px) {
+  .t3k-bar .t3k-bar-meta {
+    flex: 0 1 34%;
+    min-width: 180px;
+    max-width: 420px;
+  }
+}
+@container (max-width: 599px) {
+  .t3k-bar .t3k-bar-wide {
+    display: none;
+  }
+}
+@container (max-width: 719px) {
+  .t3k-bar .t3k-bar-time {
+    display: none;
+  }
+}
+
+/* `pinned`: the player is held to the bottom of the page and grows upward,
+ * so what the chevron opens scrolls within itself rather than push the
+ * playbar off a short screen. 12rem is the playbar plus a strip of the page
+ * above it. */
+.t3k-pinned-panel {
+  max-height: calc(100vh - 12rem);
+  max-height: calc(100dvh - 12rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Skeleton shimmer for the loading state. */

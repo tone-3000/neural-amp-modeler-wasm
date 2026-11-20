@@ -1,5 +1,11 @@
-import React, { useCallback, useRef } from 'react';
-import { T3kPlayerProps } from '../types';
+import React, {
+  ForwardedRef,
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useRef,
+} from 'react';
+import { T3kPlayerHandle, T3kPlayerProps } from '../types';
 import { usePlayer } from './hooks/usePlayer';
 import { useRootResize } from './hooks/useRootResize';
 import { useRootVisible } from './hooks/useRootVisible';
@@ -10,12 +16,13 @@ import { PanelLayout } from './layouts/PanelLayout';
  * The player. One component for every surface:
  *
  * - one tone → single player; two or more → playlist
- * - `layout` picks `mini` | `compact` | `full`
+ * - `layout` picks `mini` | `compact` | `full` | `bar`
  * - all state changes surface through `onEvent`
+ * - a `ref` gives `play()` / `pause()` to controls outside the player
  *
  * Must be rendered inside `T3kPlayerProvider`.
  */
-export const T3kPlayer: React.FC<T3kPlayerProps> = props => {
+function Player(props: T3kPlayerProps, ref: ForwardedRef<T3kPlayerHandle>) {
   const {
     tones,
     layout = 'full',
@@ -28,17 +35,21 @@ export const T3kPlayer: React.FC<T3kPlayerProps> = props => {
     linkTarget = '_blank',
     docked = false,
     collapseTabs = false,
+    pinned = false,
+    onClose,
     size,
     onEvent,
   } = props;
 
+  // `mini` and `bar` have nowhere to put a pager.
+  const singleOnly = layout === 'mini' || layout === 'bar';
   const isPlaylist = tones.length > 1;
-  if (isPlaylist && layout === 'mini') {
+  if (isPlaylist && singleOnly) {
     console.warn(
-      '[T3kPlayer] `mini` layout does not support playlists; rendering `compact`.'
+      `[T3kPlayer] \`${layout}\` layout does not support playlists; rendering \`compact\`.`
     );
   }
-  const effectiveLayout = isPlaylist && layout === 'mini' ? 'compact' : layout;
+  const effectiveLayout = isPlaylist && singleOnly ? 'compact' : layout;
 
   const controller = usePlayer({
     tones,
@@ -50,6 +61,19 @@ export const T3kPlayer: React.FC<T3kPlayerProps> = props => {
     live,
     layout: effectiveLayout,
   });
+
+  const { togglePlay, isTonePlaying, pause, activeToneId } = controller;
+  useImperativeHandle(
+    ref,
+    () => ({
+      play: async toneId => {
+        const id = toneId ?? activeToneId;
+        if (!isTonePlaying(id)) await togglePlay(id);
+      },
+      pause,
+    }),
+    [togglePlay, isTonePlaying, pause, activeToneId]
+  );
 
   const rootRef = useRef<HTMLDivElement>(null);
   const onEventRef = useRef(onEvent);
@@ -97,10 +121,15 @@ export const T3kPlayer: React.FC<T3kPlayerProps> = props => {
           linkTarget={linkTarget}
           docked={docked}
           collapseTabs={collapseTabs}
+          pinned={pinned}
+          onClose={onClose}
         />
       )}
     </div>
   );
-};
+}
+
+export const T3kPlayer = forwardRef(Player);
+T3kPlayer.displayName = 'T3kPlayer';
 
 export default T3kPlayer;
